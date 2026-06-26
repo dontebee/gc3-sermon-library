@@ -16,7 +16,15 @@ import subprocess
 import sys
 import tempfile
 
-CHANNEL = "https://www.youtube.com/@godchaserschurch/videos"
+# Titles often contain emoji (e.g. the red live dot). Make stdout UTF-8 safe so a
+# print never crashes the run on Windows consoles that default to cp1252.
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
+CHANNEL = "https://www.youtube.com/@godchaserschurch"
+TABS = ["/videos", "/streams"]  # regular uploads AND past live streams (sermons stream live)
 RECENT_LIMIT = 12
 MIN_DURATION_SECONDS = 1200  # 20 minutes. The supervised backfill used 600 (10 min).
 EXCLUDE_KEYWORDS = ["official video", "lyric", "worship", "cover",
@@ -56,23 +64,30 @@ def yt(args):
 
 
 def recent_videos():
-    res = yt(["--dump-json", "--playlist-end", str(RECENT_LIMIT), CHANNEL])
-    out = []
-    for line in (res.stdout or "").splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            out.append(json.loads(line))
-        except json.JSONDecodeError:
-            continue
+    # Check both the uploads tab and the live-streams tab, then dedupe by id.
+    out, seen = [], set()
+    last_stderr = ""
+    for tab in TABS:
+        res = yt(["--dump-json", "--playlist-end", str(RECENT_LIMIT), CHANNEL + tab])
+        last_stderr = res.stderr or last_stderr
+        for line in (res.stdout or "").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                d = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            vid = d.get("id")
+            if vid and vid not in seen:
+                seen.add(vid)
+                out.append(d)
     if not out:
-        # Most often this is YouTube blocking the data-center IP of the runner.
-        print("No videos returned from YouTube. This usually means the GitHub runner")
-        print("IP was rate-limited or asked to sign in. The run is not failed; it will")
-        print("try again next week. If this persists, add a YT_COOKIES secret (see README).")
-        tail = (res.stderr or "").strip().splitlines()[-3:]
-        for ln in tail:
+        # Most often this is YouTube blocking the IP of the runner.
+        print("No videos returned from YouTube (checked uploads and live streams).")
+        print("This usually means the IP was rate-limited or asked to sign in. The run")
+        print("is not failed; it will try again next week.")
+        for ln in (last_stderr or "").strip().splitlines()[-3:]:
             print("  yt-dlp:", ln)
     return out
 
