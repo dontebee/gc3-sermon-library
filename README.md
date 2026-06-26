@@ -27,6 +27,24 @@ Anything already in the database is skipped. New sermons are inserted with
 The supervised one-time backfill used a 10-minute floor; the weekly job uses 20
 minutes because it runs unattended. Both values are one-line constants.
 
+It checks both the uploads tab and the live-streams tab (Sunday sermons stream
+live), and dedupes across them.
+
+## Enrichment (the analysis is built in)
+
+Every sermon is analyzed as it is pulled, not after. After cleaning the captions,
+the job calls the Anthropic API to extract scriptures, a big idea, theme tags,
+verbatim quotes, Greek/Hebrew word studies, named teaching frameworks, and the
+series name, then inserts a complete row. This is the most important part: a raw
+transcript with no analysis is just text.
+
+This requires an `ANTHROPIC_API_KEY` (get one at https://console.claude.com, add a
+little credit). Cost is roughly 2 to 4 cents per sermon with the default model
+(`claude-sonnet-4-6`). Change `ENRICH_MODEL` in `weekly_update.py` to
+`claude-haiku-4-5` for cheaper or `claude-opus-4-8` for maximum depth. If the key
+is absent, the sermon is still saved (body and search work), just without the
+analysis, and a warning is printed.
+
 ## Setup
 
 The Supabase project and schema are already live. To turn on the weekly automation:
@@ -34,10 +52,12 @@ The Supabase project and schema are already live. To turn on the weekly automati
 1. Create a private GitHub repo named `gc3-sermon-library` and push this folder
    (see "Push to GitHub" below).
 2. In the repo: Settings > Secrets and variables > Actions > New repository secret.
-   Add two secrets:
+   Add three secrets:
    - `SUPABASE_URL` = `https://eibrykdamgyoylnqknao.supabase.co`
    - `SUPABASE_SERVICE_KEY` = your service_role key (Supabase > Settings > API).
      Use a freshly rotated key.
+   - `ANTHROPIC_API_KEY` = your Anthropic API key (https://console.claude.com),
+     used to analyze each sermon on pull.
 3. The Action runs every Monday at 13:00 UTC. To run it on demand: Actions tab >
    Weekly sermon pull > Run workflow.
 

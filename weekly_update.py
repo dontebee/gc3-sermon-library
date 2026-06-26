@@ -1,12 +1,16 @@
-"""Weekly: add new GodChasers sermons to Supabase.
+"""Weekly: add new GodChasers sermons to Supabase, fully analyzed on the way in.
 
-Pulls the most recent uploads, keeps only public videos at or above
-MIN_DURATION_SECONDS whose titles do not contain music or promo keywords, skips
-any already in the database, downloads English auto-captions only (no media),
-cleans them, and inserts a row with verified=false for review.
+Pulls the most recent uploads AND live streams, keeps only public videos at or
+above MIN_DURATION_SECONDS whose titles do not contain music or promo keywords,
+skips any already in the database, downloads English auto-captions only (no
+media), cleans them, then runs an AI analysis (scriptures, big idea, themes,
+quotes, word studies, frameworks, series) before inserting. New sermons land
+with verified=false for review, but already enriched.
 
-Env vars: SUPABASE_URL, SUPABASE_SERVICE_KEY
-Optional: YT_COOKIES (path to a cookies.txt file) if YouTube throttles the runner.
+Env vars:
+  SUPABASE_URL, SUPABASE_SERVICE_KEY   the database
+  ANTHROPIC_API_KEY                     the analysis (required for enrichment)
+Optional: YT_COOKIES (path to a cookies.txt file) if YouTube throttles the host.
 """
 import glob
 import json
@@ -24,32 +28,80 @@ except Exception:
     pass
 
 CHANNEL = "https://www.youtube.com/@godchaserschurch"
-TABS = ["/videos", "/streams"]  # regular uploads AND past live streams (sermons stream live)
+TABS = ["/videos", "/streams"]  # regular uploads AND past live streams
 RECENT_LIMIT = 12
 MIN_DURATION_SECONDS = 1200  # 20 minutes. The supervised backfill used 600 (10 min).
 EXCLUDE_KEYWORDS = ["official video", "lyric", "worship", "cover",
                     "trailer", "promo", "behind the scenes"]
+ENRICH_MODEL = "claude-sonnet-4-6"  # strong + cost-effective for extraction. Change to
+# "claude-haiku-4-5" for cheaper, or "claude-opus-4-8" for maximum depth.
 
-# Fail early with a clear message if the secrets are missing or misnamed.
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_KEY")
-missing = [name for name, val in
-           (("SUPABASE_URL", SUPABASE_URL), ("SUPABASE_SERVICE_KEY", SUPABASE_SERVICE_KEY))
-           if not val]
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
+missing = [n for n, v in (("SUPABASE_URL", SUPABASE_URL), ("SUPABASE_SERVICE_KEY", SUPABASE_SERVICE_KEY)) if not v]
 if missing:
     print("ERROR: missing required secret(s): " + ", ".join(missing))
-    print("In the repo: Settings > Secrets and variables > Actions. The names must")
-    print("match exactly: SUPABASE_URL and SUPABASE_SERVICE_KEY.")
     sys.exit(1)
+if not ANTHROPIC_API_KEY:
+    print("WARNING: ANTHROPIC_API_KEY is not set. New sermons will be saved WITHOUT")
+    print("analysis (no scriptures, themes, word studies, or frameworks). Set the key")
+    print("to enrich on pull. The sermon body is still captured and searchable.")
 
 try:
     from supabase import create_client
 except ImportError:
-    print("ERROR: the 'supabase' package is not installed. Run: pip install -r requirements.txt")
+    print("ERROR: 'supabase' not installed. Run: pip install -r requirements.txt")
     sys.exit(1)
 
 sb = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 COOKIES = os.environ.get("YT_COOKIES")
+
+ANALYSIS_TOOL = {
+    "name": "save_analysis",
+    "description": "Save the structured analysis of one sermon transcript.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "series": {"type": "string", "description": "The sermon series name if the title clearly indicates one (e.g. '#MMM' = Monday Morning Manna, 'AFUERA (Week 2)' = AFUERA). Empty string if standalone or unclear."},
+            "big_idea": {"type": "string", "description": "ONE sentence (max 25 words) capturing the central message."},
+            "scriptures": {"type": "array", "items": {"type": "string"}, "description": "Bible passages actually taught from or quoted, e.g. 'John 21:15-17'. Best 1 to 6. Empty if none."},
+            "themes": {"type": "array", "items": {"type": "string"}, "description": "3 to 6 lowercase keyword tags."},
+            "quotes": {"type": "array", "items": {"type": "string"}, "description": "1 to 3 short verbatim standout quotes from the preacher, each max 30 words."},
+            "word_studies": {"type": "array", "items": {"type": "object", "properties": {
+                "term": {"type": "string"}, "language": {"type": "string"}, "gloss": {"type": "string"},
+                "usage": {"type": "string"}, "quote": {"type": "string"}}, "required": ["term", "language", "gloss", "usage", "quote"]},
+                "description": "Only when the preacher explicitly teaches a Greek or Hebrew word's meaning. Empty array otherwise."},
+            "frameworks": {"type": "array", "items": {"type": "object", "properties": {
+                "name": {"type": "string"}, "description": {"type": "string"}, "quote": {"type": "string"}},
+                "required": ["name", "description", "quote"]},
+                "description": "Only for a named or clearly structured repeatable teaching device (named concepts, memorable contrasts like 'X vs Y', acronyms). Not generic three-point outlines. Empty array otherwise."},
+        },
+        "required": ["series", "big_idea", "scriptures", "themes", "quotes", "word_studies", "frameworks"],
+    },
+}
+
+
+def enrich(title, body):
+    if not ANTHROPIC_API_KEY:
+        return None
+    try:
+        import anthropic
+        client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+        prompt = ("You are analyzing a sermon by Pastor Donte Banks. The transcript is from "
+                  "auto-captions (unpunctuated). Extract the structured analysis and call the "
+                  "save_analysis tool. Auto-captions garble Greek and Hebrew words; give your best "
+                  f"transliteration.\n\nTITLE: {title}\n\nTRANSCRIPT:\n{body[:80000]}")
+        msg = client.messages.create(
+            model=ENRICH_MODEL, max_tokens=2000, tools=[ANALYSIS_TOOL],
+            tool_choice={"type": "tool", "name": "save_analysis"},
+            messages=[{"role": "user", "content": prompt}])
+        for b in msg.content:
+            if b.type == "tool_use":
+                return b.input
+    except Exception as e:
+        print("  enrichment failed:", repr(e))
+    return None
 
 
 def yt(args):
@@ -64,7 +116,6 @@ def yt(args):
 
 
 def recent_videos():
-    # Check both the uploads tab and the live-streams tab, then dedupe by id.
     out, seen = [], set()
     last_stderr = ""
     for tab in TABS:
@@ -83,10 +134,8 @@ def recent_videos():
                 seen.add(vid)
                 out.append(d)
     if not out:
-        # Most often this is YouTube blocking the IP of the runner.
         print("No videos returned from YouTube (checked uploads and live streams).")
-        print("This usually means the IP was rate-limited or asked to sign in. The run")
-        print("is not failed; it will try again next week.")
+        print("Likely the host IP was rate-limited. The run is not failed; it retries next week.")
         for ln in (last_stderr or "").strip().splitlines()[-3:]:
             print("  yt-dlp:", ln)
     return out
@@ -161,9 +210,11 @@ def main():
                     print("NO CAPTIONS YET:", title)
                     continue
                 body = clean_vtt(vtt)
+
+            analysis = enrich(title, body)
             upload = d.get("upload_date")
             iso = f"{upload[:4]}-{upload[4:6]}-{upload[6:]}" if upload and len(upload) == 8 else None
-            sb.table("sermons").upsert({
+            row = {
                 "youtube_video_id": vid,
                 "title": title,
                 "preached_date": iso,
@@ -172,9 +223,32 @@ def main():
                 "speaker": "PD",
                 "verified": False,
                 "body": body,
-            }, on_conflict="youtube_video_id").execute()
+            }
+            if analysis:
+                row["series"] = (analysis.get("series") or "").strip() or None
+                row["big_idea"] = analysis.get("big_idea")
+                row["scriptures"] = analysis.get("scriptures") or []
+                row["themes"] = analysis.get("themes") or []
+                row["quotes"] = analysis.get("quotes") or []
+
+            res = sb.table("sermons").upsert(row, on_conflict="youtube_video_id").execute()
+            sermon_id = res.data[0]["id"] if res.data else None
+
+            n_ws = n_fw = 0
+            if analysis and sermon_id:
+                ws = [{"sermon_id": sermon_id, **{k: w.get(k) for k in ("term", "language", "gloss", "usage", "quote")}}
+                      for w in (analysis.get("word_studies") or []) if w.get("term")]
+                fw = [{"sermon_id": sermon_id, **{k: f.get(k) for k in ("name", "description", "quote")}}
+                      for f in (analysis.get("frameworks") or []) if f.get("name")]
+                if ws:
+                    sb.table("word_studies").insert(ws).execute()
+                if fw:
+                    sb.table("frameworks").insert(fw).execute()
+                n_ws, n_fw = len(ws), len(fw)
+
             added += 1
-            print("ADDED:", title)
+            tag = f"ENRICHED ({n_ws} word studies, {n_fw} frameworks)" if analysis else "RAW (no analysis key)"
+            print(f"ADDED [{tag}]:", title)
         except Exception as e:
             errored += 1
             print("ERROR on video:", d.get("id"), repr(e))
