@@ -1,0 +1,6 @@
+.env
+__pycache__/
+*.pyc
+*.vtt
+captions_tmp/
+cookies.txt

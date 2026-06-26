@@ -1,0 +1,32 @@
+name: Weekly sermon pull
+
+on:
+  schedule:
+    - cron: '0 13 * * 1'   # Mondays at 13:00 UTC (about 7am Central)
+  workflow_dispatch: {}      # also allows a manual run from the Actions tab
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # Optional: if YouTube throttles the GitHub runner, create a YT_COOKIES
+      # secret holding the contents of a cookies.txt export, then uncomment the
+      # two lines below and the YT_COOKIES env line in the run step.
+      # - name: Write cookies file
+      #   run: printf '%s' "${{ secrets.YT_COOKIES }}" > cookies.txt
+
+      - name: Run weekly update
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          # YT_COOKIES: cookies.txt
+        run: python weekly_update.py
