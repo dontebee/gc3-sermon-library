@@ -18,16 +18,31 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      # Optional: if YouTube throttles the GitHub runner, create a YT_COOKIES
-      # secret holding the contents of a cookies.txt export, then uncomment the
-      # two lines below and the YT_COOKIES env line in the run step.
-      # - name: Write cookies file
-      #   run: printf '%s' "${{ secrets.YT_COOKIES }}" > cookies.txt
+      # yt-dlp needs a JavaScript runtime for YouTube extraction now; without
+      # one, player responses come back empty on the runner.
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      # YouTube blocks GitHub's shared runner IPs with a bot check unless the
+      # request carries signed-in cookies. Add a YT_COOKIES secret holding the
+      # contents of a cookies.txt export (see repo README) and this step
+      # activates by itself; with no secret it does nothing.
+      - name: Write cookies file if the YT_COOKIES secret exists
+        env:
+          YT_COOKIES_DATA: ${{ secrets.YT_COOKIES }}
+        run: |
+          if [ -n "$YT_COOKIES_DATA" ]; then
+            printf '%s' "$YT_COOKIES_DATA" > cookies.txt
+            echo "YT_COOKIES=cookies.txt" >> "$GITHUB_ENV"
+            echo "cookies.txt written; yt-dlp will use it"
+          else
+            echo "no YT_COOKIES secret; running without cookies"
+          fi
 
       - name: Run weekly update
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          # YT_COOKIES: cookies.txt
         run: python weekly_update.py
