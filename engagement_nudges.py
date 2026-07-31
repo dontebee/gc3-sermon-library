@@ -12,11 +12,15 @@ One run does four things:
    giving_gifts table (needs PCO_APP_ID and PCO_SECRET, a PCO personal access
    token). Skipped gracefully when the secrets are absent.
 
-3. Giving nudges. First-time givers get a thank-you celebration from Pastor
-   Donte (kind first_gift). Repeat givers who are not on a recurring schedule
-   get a warm invitation to become monthly givers (kind monthly_nudge, at most
-   once every 60 days). Logged in giving_nudge_log, keyed by donor, because
-   givers are not always platform users.
+3. Giving journey and nudges. First-time givers enter a 90 day generosity
+   journey: a personal welcome from Pastor Donte on day 0 (kind first_gift),
+   then touchpoints on day 5, day 30 (with a monthly partner invitation), and
+   day 90 (kinds first_gift_d5, first_gift_d30, first_gift_d90). Repeat givers
+   past the journey who are not on a recurring schedule get a warm invitation
+   to become monthly givers (kind monthly_nudge, at most once every 60 days).
+   Logged in giving_nudge_log, keyed by donor, because givers are not always
+   platform users. The weekly digest also prompts the personal touches that
+   should not be automated: a text from the pastor and a handwritten note.
 
 4. Weekly digest. One email to the Lead Pastor covering Growth Track movement
    (new members, active learners, milestones, who has gone quiet), intranet
@@ -54,6 +58,7 @@ NOW = datetime.now(timezone.utc)
 WEEK_AGO = NOW - timedelta(days=7)
 CELEBRATE_WINDOW_DAYS = 10   # only celebrate milestones reached this recently
 FIRST_GIFT_WINDOW_DAYS = 14  # a "first gift" counts as new for this long
+JOURNEY_CATCHUP_DAYS = 14    # how late a journey step may still be sent
 MONTHLY_NUDGE_COOLDOWN_DAYS = 60
 STALLED_AFTER_DAYS = 14
 
@@ -321,6 +326,74 @@ def growth_track():
 
 # ---------------------------------------------------------------- giving
 
+# The 90 day generosity journey for first-time givers. Each step fires once the
+# donor's first gift is at least `day` days old, and is skipped entirely if it
+# is more than JOURNEY_CATCHUP_DAYS late (so donors who gave long before this
+# automation existed never get stale touchpoints). One step per donor per run.
+JOURNEY = [
+    {
+        "kind": "first_gift", "day": 0,
+        "subject": "You just did something most people never do",
+        "paras": [
+            "I don't want to let this moment pass without telling you how much it means. "
+            "You just gave to GodChasers Church for the first time, and I want to personally "
+            "say thank you. Not just on behalf of our church family, but as your pastor.",
+            "Here is what I know about this moment: this was not just a transaction, it was a "
+            "declaration. By taking this step you declared that you are putting God first, and "
+            "that your heart is moving toward something bigger than yourself. Jesus said it "
+            "plainly: where your treasure goes, your heart follows. You just moved your heart.",
+            "And because of your faithfulness, families in our community are going to be served, "
+            "people searching for hope are going to find it, and real lives are going to change. "
+            "That is not church talk. That is what your generosity actually does.",
+            "So as your pastor, I am proud of you. This is a big moment, and I wanted to "
+            "celebrate it with you. God is not done with what He has started in you.",
+            '<i>P.S. Keep an eye on your mailbox. I am sending you something personally.</i>',
+        ],
+    },
+    {
+        "kind": "first_gift_d5", "day": 5,
+        "subject": "The story your generosity is writing",
+        "paras": [
+            "A few days ago you gave to GodChasers Church for the first time, and I have been "
+            "thinking about it since. I wanted you to see what you are now part of.",
+            "Every week, people walk through our doors carrying things nobody can see: grief, "
+            "questions, empty tanks. And every week, because people like you sow into this "
+            "house, they meet a God who sees them. Your gift is already in that story.",
+            "If there is anything I can be praying about for you, reply to this email. "
+            "I read these myself.",
+        ],
+    },
+    {
+        "kind": "first_gift_d30", "day": 30,
+        "subject": "One month ago you took a step",
+        "paras": [
+            "One month ago you gave to GodChasers Church for the first time. I told you then "
+            "that it was a declaration, and I meant it. Today I want to invite you into a rhythm.",
+            "The people who grow the most in generosity are not the ones who give the biggest "
+            "gifts. They are the ones who give consistently. Would you pray about becoming a "
+            "monthly partner? It takes about a minute to set up, and it turns a moment of "
+            "obedience into a lifestyle of faith.",
+            "No pressure and no obligation. If it is not your season, that is okay. "
+            "But if God nudges you, I would love for you to follow it.",
+        ],
+        "cta": ("Become a monthly partner", GIVING_URL),
+    },
+    {
+        "kind": "first_gift_d90", "day": 90,
+        "subject": "90 days ago something shifted",
+        "paras": [
+            "Ninety days ago you gave your first gift to GodChasers Church. I do not know if "
+            "you have thought about it since, but I have. That day something shifted in you, "
+            "and I have watched God honor it.",
+            "Thank you for being part of this house. Not just for what you have given, but for "
+            "who you are becoming. I am praying that the next ninety days hold more of God's "
+            "presence, more open doors, and more of the purpose He wrote on your life.",
+            "If you ever want to talk, pray, or find your place on a team, my inbox is open. "
+            "Just reply.",
+        ],
+    },
+]
+
 PCO_BASE = "https://api.planningcenteronline.com"
 
 
@@ -420,6 +493,20 @@ def donor_email(pid, cache):
     return email
 
 
+def donor_phone(pid):
+    """Best phone number for a donor, for the digest's personal-touch prompts."""
+    try:
+        data = pco_get(f"/people/v2/people/{pid}/phone_numbers")
+        rows = data.get("data", [])
+        primary = [r for r in rows if r.get("attributes", {}).get("primary")]
+        pick = (primary or rows)
+        if pick:
+            return pick[0]["attributes"].get("number")
+    except Exception as e:
+        print(f"  WARNING: phone lookup failed for person {pid}: {e}")
+    return None
+
+
 def giving():
     """Sync gifts, celebrate first-time givers, nudge repeat givers monthly."""
     if not (PCO_APP_ID and PCO_SECRET):
@@ -445,8 +532,10 @@ def giving():
     email_cache = {}
     first_cutoff = NOW - timedelta(days=FIRST_GIFT_WINDOW_DAYS)
     ninety = NOW - timedelta(days=90)
+    journey_span = max(s["day"] for s in JOURNEY) + JOURNEY_CATCHUP_DAYS
     week_total, week_count = 0, 0
-    first_timers, nudged = [], []
+    first_timers, nudged, touches = [], [], []
+    run_welcomed = set()
 
     optout_emails = set()
     gt_profiles = {p["id"]: p for p in fetch_all("gt_profiles", "id,email_optout")}
@@ -467,25 +556,32 @@ def giving():
         pid = ds[0].get("pco_person_id")
         to = next((d.get("donor_email") for d in ds if d.get("donor_email")), None)
 
-        # First-time giver celebration: earliest gift is recent, never sent before.
-        if times[0] >= first_cutoff and not last_sent(key, "first_gift"):
-            if not to and pid:
-                to = donor_email(pid, email_cache)
+        # 90 day generosity journey: fires while the first gift is fresh enough.
+        days_since_first = (NOW - times[0]).days
+        if times[0] >= first_cutoff:
             first_timers.append(name)
-            if to and to.lower() not in optout_emails:
-                paras = [
-                    "I just saw that you gave your first gift to GodChasers Church, and I had to stop and say thank you.",
-                    "Your generosity is not a transaction to us. It is seed sown into changed lives, and it tells me you believe in what God is doing in this house.",
-                    "I do not take it lightly, and I am praying that God multiplies it back to you in every way that matters.",
-                ]
-                if send_email(to, "I saw your first gift. Thank you.", letter(first, paras), "first_gift"):
-                    if not DRY_RUN:
-                        sb.table("giving_nudge_log").upsert(
-                            {"donor_key": key, "kind": "first_gift"},
-                            on_conflict="donor_key,kind,sent_on").execute()
-            continue  # never send a monthly nudge in the same run as a celebration
+        if days_since_first <= journey_span:
+            step = next(
+                (s for s in JOURNEY
+                 if s["day"] <= days_since_first <= s["day"] + JOURNEY_CATCHUP_DAYS
+                 and not last_sent(key, s["kind"])),
+                None)
+            if step:
+                if not to and pid:
+                    to = donor_email(pid, email_cache)
+                if to and to.lower() not in optout_emails:
+                    if send_email(to, step["subject"],
+                                  letter(first, step["paras"], step.get("cta")),
+                                  step["kind"]):
+                        if step["kind"] == "first_gift":
+                            run_welcomed.add(key)
+                        if not DRY_RUN:
+                            sb.table("giving_nudge_log").upsert(
+                                {"donor_key": key, "kind": step["kind"]},
+                                on_conflict="donor_key,kind,sent_on").execute()
+            continue  # donors inside the journey never get the generic nudge
 
-        # Monthly nudge: 2+ gifts in 90 days, not recurring, cooled down.
+        # Monthly nudge: 2+ gifts in 90 days, past the journey, not recurring.
         recent = [t for t in times if t >= ninety]
         if len(recent) >= 2 and pid not in recurring_ids:
             last = last_sent(key, "monthly_nudge")
@@ -508,6 +604,20 @@ def giving():
                             {"donor_key": key, "kind": "monthly_nudge"},
                             on_conflict="donor_key,kind,sent_on").execute()
 
+    # Personal-touch prompts for the digest: everyone welcomed into the journey
+    # in the last 7 days (any run), with a phone number when PCO has one.
+    week_ago_date = (NOW - timedelta(days=7)).date().isoformat()
+    welcomed = run_welcomed | {
+        r["donor_key"] for r in nudge_log
+        if r["kind"] == "first_gift" and str(r["sent_on"]) >= week_ago_date}
+    for key in welcomed:
+        ds = donors.get(key)
+        if not ds:
+            continue
+        name = next((d["donor_name"] for d in ds if d.get("donor_name")), None) or key
+        pid = ds[0].get("pco_person_id")
+        touches.append((name, donor_phone(pid) if pid else None))
+
     return {
         "connected": True,
         "week_count": week_count,
@@ -515,6 +625,7 @@ def giving():
         "first_timers": first_timers,
         "new_recurring": new_recurring,
         "nudged": nudged,
+        "touches": touches,
     }
 
 
@@ -594,6 +705,18 @@ def digest(gt, giv, intra):
                                                         "No new recurring donors this week.")))
         parts.append(section("Monthly giving invitations sent", ul([h(n) for n in giv["nudged"]],
                                                                    "None sent this run.")))
+        touch_lines = []
+        for name, phone in giv.get("touches", []):
+            first = h(str(name).split(" ")[0])
+            shown = h(phone) if phone else "no phone on file, check PCO"
+            touch_lines.append(
+                f"<b>{h(name)}</b> ({shown}): send a personal text, then have the office mail "
+                f"a handwritten thank-you note. Suggested text: &quot;Hey {first}, it's Pastor "
+                f"Donte. I saw your first gift come through this week. Thank you for trusting "
+                f"God with that. Proud to be your pastor.&quot;")
+        parts.append(section(
+            "Personal touches to make this week (not automated on purpose)",
+            ul(touch_lines, "No new givers to personally reach out to this week.")))
     else:
         parts.append(section("Giving", '<p style="color:#888;">Not connected yet. Add PCO_APP_ID '
                                        'and PCO_SECRET repo secrets (a Planning Center personal '
@@ -634,10 +757,17 @@ def main():
     gt = growth_track()
     giv = giving()
     intra = intranet()
-    body = digest(gt, giv, intra)
-    week_of = NOW.astimezone(CT).strftime("%b %d")
-    send_email(DIGEST_TO, f"GC3 Weekly Digest: Growth Track and Giving ({week_of})",
-               body, "weekly_digest", capped=False)
+    # The job runs daily so journey steps land on time; the digest ships once a
+    # week (Mondays, Central) unless FORCE_DIGEST asks for it now.
+    digest_day = NOW.astimezone(CT).weekday() == 0
+    force = os.environ.get("FORCE_DIGEST", "").strip() in ("1", "true", "yes")
+    if digest_day or force:
+        body = digest(gt, giv, intra)
+        week_of = NOW.astimezone(CT).strftime("%b %d")
+        send_email(DIGEST_TO, f"GC3 Weekly Digest: Growth Track and Giving ({week_of})",
+                   body, "weekly_digest", capped=False)
+    else:
+        print("Not digest day (Monday Central); nudges only.")
     print(f"Done. {len(emails_sent)} email(s) {'previewed' if DRY_RUN else 'sent'}, "
           f"{len(send_failures)} failure(s).")
     if send_failures:

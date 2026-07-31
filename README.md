@@ -15,9 +15,10 @@ and added automatically.
 
 ## Engagement nudges and weekly digest
 
-`engagement_nudges.py` (run by `.github/workflows/engagement.yml` every Monday,
-plus a manual trigger with a dry-run option) watches the whole GC3 platform,
-intranet and Growth Track, and sends:
+`engagement_nudges.py` (run by `.github/workflows/engagement.yml` daily so
+journey touchpoints land on the right day, plus a manual trigger with dry-run
+and force-digest options) watches the whole GC3 platform, intranet and Growth
+Track, and sends:
 
 - **Growth Track celebrations, from Pastor Donte.** When someone finishes a
   phase (GATHER, GROW, GO) or the whole track, they get a personal email.
@@ -25,16 +26,24 @@ intranet and Growth Track, and sends:
   `celebrate_go`, `celebrate_course`) so nobody is emailed twice, and
   `email_optout` is honored. The existing in-app nudge system (nudge_3,
   checkin_7, etc.) is untouched.
-- **First-time giver celebrations.** Donations are synced from Planning Center
-  Giving into the `giving_gifts` table; a donor whose first-ever gift is recent
-  gets a thank-you from Pastor Donte (kind `first_gift` in `giving_nudge_log`).
-- **Monthly giving nudges.** Donors with 2+ gifts in 90 days who are not on a
-  recurring schedule get a warm invitation to become monthly partners, at most
-  once every 60 days (kind `monthly_nudge`).
+- **A 90-day generosity journey for first-time givers.** Donations are synced
+  from Planning Center Giving into the `giving_gifts` table. A donor's first
+  ever gift starts the journey: a personal welcome from Pastor Donte on day 0
+  ("You just did something most people never do"), a story-of-impact note on
+  day 5, a monthly-partner invitation on day 30, and a 90-day celebration
+  (kinds `first_gift`, `first_gift_d5`, `first_gift_d30`, `first_gift_d90` in
+  `giving_nudge_log`). Steps more than 14 days late are skipped, so donors who
+  gave long before this automation existed never get stale touchpoints.
+- **Monthly giving nudges.** Donors past the journey with 2+ gifts in 90 days
+  who are not on a recurring schedule get a warm invitation to become monthly
+  partners, at most once every 60 days (kind `monthly_nudge`).
 - **A weekly digest to the Lead Pastor** (`DIGEST_TO`, default
-  dontebee@gmail.com): who joined and moved through Growth Track, milestones,
-  who has gone quiet, giving totals, first-time givers, new monthly partners,
-  intranet activity, and everything the automation sent.
+  dontebee@gmail.com, Mondays): who joined and moved through Growth Track,
+  milestones, who has gone quiet, giving totals, first-time givers, new
+  monthly partners, intranet activity, everything the automation sent, and a
+  **personal-touch checklist**: each new giver's name and phone number with a
+  suggested text from the pastor, plus a prompt to mail a handwritten note
+  (those are left human on purpose).
 
 ### Secrets to add (Settings > Secrets and variables > Actions)
 

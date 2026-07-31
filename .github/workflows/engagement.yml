@@ -1,14 +1,20 @@
-name: Weekly engagement nudges and digest
+name: Engagement nudges and weekly digest
 
 on:
   schedule:
-    - cron: '0 14 * * 1'   # Mondays at 14:00 UTC (about 8am Central), after the sermon pull
+    - cron: '0 14 * * *'   # daily at 14:00 UTC (about 8am Central) so journey
+                           # steps (day 0, 5, 30, 90) land on time; the digest
+                           # itself only goes out on Mondays
   workflow_dispatch:
     inputs:
       dry_run:
         description: 'Dry run (print emails instead of sending)'
         type: boolean
         default: false
+      force_digest:
+        description: 'Send the digest even if today is not Monday'
+        type: boolean
+        default: true
 
 jobs:
   engagement:
@@ -34,4 +40,5 @@ jobs:
           NUDGE_FROM: ${{ vars.NUDGE_FROM }}
           REPLY_TO: ${{ vars.REPLY_TO }}
           DRY_RUN: ${{ inputs.dry_run && '1' || '' }}
+          FORCE_DIGEST: ${{ inputs.force_digest && '1' || '' }}
         run: python engagement_nudges.py
