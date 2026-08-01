@@ -127,8 +127,15 @@ def fetch_all(table, select="*", order=None):
         start += 1000
 
 
+_auth_emails_cache = None
+
+
 def auth_emails():
-    """Map auth user id -> email via the GoTrue admin API."""
+    """Map auth user id -> email via the GoTrue admin API. Cached per run
+    because both the growth track and giving sections need it."""
+    global _auth_emails_cache
+    if _auth_emails_cache is not None:
+        return _auth_emails_cache
     out = {}
     page = 1
     while True:
@@ -149,6 +156,7 @@ def auth_emails():
     for p in fetch_all("profiles", "id,email"):
         if p.get("email"):
             out.setdefault(str(p["id"]), p["email"])
+    _auth_emails_cache = out
     return out
 
 
@@ -398,8 +406,21 @@ PCO_BASE = "https://api.planningcenteronline.com"
 
 
 def pco_get(path, params=None):
-    r = requests.get(PCO_BASE + path, params=params or {},
-                     auth=(PCO_APP_ID, PCO_SECRET), timeout=30)
+    """GET from Planning Center with retry. PCO rate-limits aggressively
+    (HTTP 429 with a Retry-After header), which a first-run backfill of years
+    of donations will absolutely hit; without this the whole job would crash
+    mid-sync."""
+    import time
+    for attempt in range(5):
+        r = requests.get(PCO_BASE + path, params=params or {},
+                         auth=(PCO_APP_ID, PCO_SECRET), timeout=30)
+        if r.status_code == 429 or r.status_code >= 500:
+            wait = int(r.headers.get("Retry-After") or 2 ** attempt)
+            print(f"  PCO {r.status_code} on {path}, retrying in {wait}s...")
+            time.sleep(min(wait, 30))
+            continue
+        r.raise_for_status()
+        return r.json()
     r.raise_for_status()
     return r.json()
 
@@ -426,7 +447,9 @@ def sync_gifts():
         batch, all_known = [], True
         for d in items:
             a = d.get("attributes", {})
-            if a.get("refunded"):
+            # Skip refunded gifts and payments that have not actually cleared;
+            # celebrating a declined card would be worse than sending nothing.
+            if a.get("refunded") or (a.get("payment_status") or "succeeded") in ("pending", "failed"):
                 continue
             pid = (((d.get("relationships") or {}).get("person") or {}).get("data") or {}).get("id")
             person = people.get(pid, {}).get("attributes", {}) if pid else {}
@@ -533,9 +556,15 @@ def giving():
     first_cutoff = NOW - timedelta(days=FIRST_GIFT_WINDOW_DAYS)
     ninety = NOW - timedelta(days=90)
     journey_span = max(s["day"] for s in JOURNEY) + JOURNEY_CATCHUP_DAYS
-    week_total, week_count = 0, 0
     first_timers, nudged, touches = [], [], []
     run_welcomed = set()
+
+    # Weekly totals come from every gift, including ones we cannot tie to a
+    # donor; the per-donor loop below skips keyless gifts and would undercount.
+    week_gift_times = [(g, parse_ts(g.get("received_at"))) for g in gifts]
+    week_gifts = [g for g, t in week_gift_times if t and t >= WEEK_AGO]
+    week_count = len(week_gifts)
+    week_total = sum(g.get("amount_cents") or 0 for g in week_gifts)
 
     optout_emails = set()
     gt_profiles = {p["id"]: p for p in fetch_all("gt_profiles", "id,email_optout")}
@@ -549,10 +578,6 @@ def giving():
             continue
         name = next((d["donor_name"] for d in ds if d.get("donor_name")), None) or "friend"
         first = name.split(" ")[0]
-        week_gifts = [d for d in ds if (parse_ts(d["received_at"]) or NOW) >= WEEK_AGO]
-        week_count += len(week_gifts)
-        week_total += sum(d.get("amount_cents") or 0 for d in week_gifts)
-
         pid = ds[0].get("pco_person_id")
         to = next((d.get("donor_email") for d in ds if d.get("donor_email")), None)
 
