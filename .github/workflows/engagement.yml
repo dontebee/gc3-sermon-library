@@ -1,0 +1,44 @@
+name: Engagement nudges and weekly digest
+
+on:
+  schedule:
+    - cron: '0 14 * * *'   # daily at 14:00 UTC (about 8am Central) so journey
+                           # steps (day 0, 5, 30, 90) land on time; the digest
+                           # itself only goes out on Mondays
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run (print emails instead of sending)'
+        type: boolean
+        default: false
+      force_digest:
+        description: 'Send the digest even if today is not Monday'
+        type: boolean
+        default: true
+
+jobs:
+  engagement:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run engagement job
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          PCO_APP_ID: ${{ secrets.PCO_APP_ID }}
+          PCO_SECRET: ${{ secrets.PCO_SECRET }}
+          DIGEST_TO: ${{ vars.DIGEST_TO }}
+          NUDGE_FROM: ${{ vars.NUDGE_FROM }}
+          REPLY_TO: ${{ vars.REPLY_TO }}
+          DRY_RUN: ${{ inputs.dry_run && '1' || '' }}
+          FORCE_DIGEST: ${{ inputs.force_digest && '1' || '' }}
+        run: python engagement_nudges.py
