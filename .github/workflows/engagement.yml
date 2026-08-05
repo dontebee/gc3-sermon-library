@@ -32,13 +32,20 @@ jobs:
       - name: Run engagement job
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          # Two names for the same key. The intranet uses the _ROLE_ form, so
+          # that one wins; the older name stays as a fallback until Doppler is
+          # the only place either is set.
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           PCO_APP_ID: ${{ secrets.PCO_APP_ID }}
           PCO_SECRET: ${{ secrets.PCO_SECRET }}
-          DIGEST_TO: ${{ vars.DIGEST_TO }}
-          NUDGE_FROM: ${{ vars.NUDGE_FROM }}
-          REPLY_TO: ${{ vars.REPLY_TO }}
+          # Doppler's GitHub sync writes Actions *secrets*, never *variables*,
+          # so read the secret first and keep vars as the fallback for anything
+          # still set by hand.
+          DIGEST_TO: ${{ secrets.DIGEST_TO || vars.DIGEST_TO }}
+          NUDGE_FROM: ${{ secrets.NUDGE_FROM || vars.NUDGE_FROM }}
+          REPLY_TO: ${{ secrets.REPLY_TO || vars.REPLY_TO }}
           DRY_RUN: ${{ inputs.dry_run && '1' || '' }}
           FORCE_DIGEST: ${{ inputs.force_digest && '1' || '' }}
         run: python engagement_nudges.py

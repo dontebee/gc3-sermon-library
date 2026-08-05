@@ -81,9 +81,25 @@ if ".supabase.co" not in SUPABASE_URL:
     if SUPABASE_URL:
         print(f"WARNING: SUPABASE_URL secret ({SUPABASE_URL!r}) is not a Supabase URL; using {DEFAULT_SUPABASE_URL}")
     SUPABASE_URL = DEFAULT_SUPABASE_URL
-SERVICE_KEY = (os.environ.get("SUPABASE_SERVICE_KEY") or "").strip().strip("'\"")
+# The intranet calls this SUPABASE_SERVICE_ROLE_KEY and this repo used to call
+# it SUPABASE_SERVICE_KEY. Two names for one key meant one of them was always
+# the stale copy, so accept either and stop maintaining the collision.
+SERVICE_KEY = (
+    os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+    or os.environ.get("SUPABASE_SERVICE_KEY")
+    or ""
+).strip().strip("'\"")
 if not SERVICE_KEY:
-    print("ERROR: missing required secret SUPABASE_SERVICE_KEY.")
+    print("ERROR: missing required secret SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_SERVICE_KEY).")
+    sys.exit(1)
+# Fail here with a name, rather than 200 lines later with 'Invalid API key'.
+# Service keys are either a JWT (eyJ...) or the newer sb_secret_ form; an anon
+# key is a JWT too, but it cannot read the tables this job needs.
+if not (SERVICE_KEY.startswith("eyJ") or SERVICE_KEY.startswith("sb_secret_")):
+    print(
+        "ERROR: the Supabase key does not look like a service key "
+        f"(starts with {SERVICE_KEY[:6]!r}). Expected 'eyJ...' or 'sb_secret_...'."
+    )
     sys.exit(1)
 
 RESEND_API_KEY = (os.environ.get("RESEND_API_KEY") or "").strip()
