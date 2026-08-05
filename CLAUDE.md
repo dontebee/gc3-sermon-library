@@ -38,18 +38,25 @@ style forbids the surveillance voice), and carried no unsubscribe.
 If you are about to add a `send_email` call to this repo, you are about to
 repeat that. Build it as a Pathway instead.
 
-## If a send survives here anyway
+## How the rule is enforced
 
-Every member-facing send must, without exception:
+`send_email()` refuses any address that is not `DIGEST_TO` and says so in the
+log. The machinery for member email — the letter template, the pathway copy,
+unsubscribe minting, suppression loading — was deleted rather than left lying
+around, so there is nothing to accidentally call.
 
-- call `pathway_active(key)` first — it **fails closed**: unknown pathway,
-  missing row, master switch off, or database unreachable all mean send nothing
-- check `load_suppression()`, the same `email_recipients` list the intranet
-  uses, so an unsubscribe anywhere means everywhere
-- pass `unsub=` to both `letter()` and `send_email()`
-- respect `MAX_EMAILS` and the per-kind cooldown
+If you find yourself rebuilding any of it here, that is the signal to stop and
+build a Pathway instead.
 
 Manual `workflow_dispatch` runs default to **dry run**. Untick it deliberately.
+
+## What this job owes the Pathways engine
+
+`giving_gifts.donor_email` and `donor_name`. Planning Center **Giving** returns
+a person id but never a name or an address, and the engine enrols `first_gift`
+and `monthly_partner` straight off this table. If the backfill from **People**
+stops working, those pathways silently reach nobody. It is the quietest way
+this job can fail.
 
 ## House style for anything a member reads
 
