@@ -161,6 +161,34 @@ def parse_ts(s):
         return None
 
 
+_journey_active_cache = None
+
+
+def journey_active(key):
+    """Is this pathway switched on at /admin/journeys?
+
+    The intranet keeps one on/off switch per pathway in journey_settings, and
+    on 2026-08-05 every one of them was off — yet this job sent 30 monthly
+    invitations, because it had never heard of the switch. A kill switch that
+    only governs half the senders is not a kill switch.
+
+    Fails CLOSED. An unknown pathway, a missing row, or a database that will
+    not answer all mean "do not send". The cost of staying quiet for a day is
+    a day; the cost of sending is unrecallable.
+    """
+    global _journey_active_cache
+    if _journey_active_cache is None:
+        try:
+            rows = fetch_all("journey_settings", "journey,active")
+            _journey_active_cache = {r["journey"]: bool(r.get("active")) for r in rows}
+        except Exception as e:
+            print(f"  WARNING: could not read journey_settings ({e}); sending nothing.")
+            _journey_active_cache = {}
+    if not _journey_active_cache.get("__all__", False):
+        return False
+    return _journey_active_cache.get(key, False)
+
+
 def load_suppression():
     """The one list that says who this house does not email.
 
@@ -349,7 +377,7 @@ def growth_track():
                     "If anything in this phase raised questions, reply to this email. I read these.",
                 ]
                 subject = f"You finished {label}. Keep going!"
-            if to.lower() in gt_suppressed:
+            if to.lower() in gt_suppressed or not journey_active("growth_track_celebrations"):
                 continue
             unsub = unsubscribe_url(to, gt_tokens)
             if send_email(to, subject, letter(first, paras, None, unsub), kind, unsub=unsub):
@@ -678,7 +706,10 @@ def giving():
                  if s["day"] <= days_since_first <= s["day"] + JOURNEY_CATCHUP_DAYS
                  and not last_sent(key, s["kind"])),
                 None)
-            if step:
+            # first_gift also exists as a pathway in the intranet engine. One
+            # switch governs both, so activating it there cannot accidentally
+            # produce two welcomes from two systems.
+            if step and journey_active("first_gift"):
                 if not to and pid:
                     to = donor_email(pid, email_cache)
                 if to and to.lower() not in optout_emails:
@@ -696,7 +727,7 @@ def giving():
 
         # Monthly nudge: 2+ gifts in 90 days, past the journey, not recurring.
         recent = [t for t in times if t >= ninety]
-        if SKIP_MONTHLY_NUDGE:
+        if SKIP_MONTHLY_NUDGE or not journey_active("monthly_partner"):
             continue
         if len(recent) >= 2 and pid not in recurring_ids:
             last = last_sent(key, "monthly_nudge")
