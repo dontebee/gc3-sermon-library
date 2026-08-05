@@ -8,9 +8,15 @@ on:
   workflow_dispatch:
     inputs:
       dry_run:
-        description: 'Dry run (print emails instead of sending)'
+        # Defaults ON for manual runs. A hand-triggered run is almost always
+        # someone checking whether the job works, and the cost of guessing
+        # wrong is real mail to real people — on 2026-08-05 a manual run sent
+        # 30 monthly-giving invitations that nobody meant to send. Untick it
+        # deliberately to send for real. The nightly schedule is unaffected:
+        # inputs do not apply to it, so scheduled runs stay live.
+        description: 'Dry run (print emails instead of sending). Untick to send for real.'
         type: boolean
-        default: false
+        default: true
       force_digest:
         description: 'Send the digest even if today is not Monday'
         type: boolean
