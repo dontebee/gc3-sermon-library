@@ -162,6 +162,48 @@ def parse_ts(s):
 
 
 _journey_active_cache = None
+_pathway_rules_cache = None
+
+
+def pathway_rules(key):
+    """The editable rules for a pathway, from pathway_rules.
+
+    Thresholds used to be hardcoded. The monthly invitation was one line —
+    two or more gifts in ninety days, no recurring schedule — with no upper
+    bound, so it invited a twice-a-week giver to try giving monthly, and no
+    staff exclusion, so six of the team got fundraising mail. Changing that
+    needed a deploy. Now PD changes it on the admin page.
+
+    Returns None when there is no row, and callers treat that as "do not
+    send" — same fail-closed posture as the switch.
+    """
+    global _pathway_rules_cache
+    if _pathway_rules_cache is None:
+        try:
+            rows = fetch_all(
+                "pathway_rules",
+                "pathway,window_days,min_events,max_events,min_amount_cents,"
+                "max_amount_cents,exclude_staff,exclude_recurring,cooldown_days,"
+                "max_per_run,require_review")
+            _pathway_rules_cache = {r["pathway"]: r for r in rows}
+        except Exception as e:
+            print(f"  WARNING: could not read pathway_rules ({e}); sending nothing.")
+            _pathway_rules_cache = {}
+    return _pathway_rules_cache.get(key)
+
+
+def staff_emails():
+    """Anyone holding an unexpired role. Excluded from asks by default —
+    the team should not receive the house's fundraising mail."""
+    try:
+        rows = fetch_all("user_roles", "user_id,expires_at")
+        now = NOW.isoformat()
+        ids = {r["user_id"] for r in rows
+               if not r.get("expires_at") or r["expires_at"] > now}
+        return {em.lower() for uid, em in auth_emails().items() if uid in ids}
+    except Exception as e:
+        print(f"  WARNING: staff lookup failed ({e}); excluding nobody.")
+        return set()
 
 
 def journey_active(key):
@@ -678,6 +720,7 @@ def giving():
     # Two opt-out sources, one set: the Growth Track flag and the intranet's
     # shared suppression list. An unsubscribe anywhere has to mean everywhere.
     optout_emails, unsub_tokens = load_suppression()
+    staff = staff_emails()
     gt_profiles = {p["id"]: p for p in fetch_all("gt_profiles", "id,email_optout")}
     for uid, em in auth_emails().items():
         if gt_profiles.get(uid, {}).get("email_optout"):
@@ -725,16 +768,38 @@ def giving():
                                 on_conflict="donor_key,kind,sent_on").execute()
             continue  # donors inside the journey never get the generic nudge
 
-        # Monthly nudge: 2+ gifts in 90 days, past the journey, not recurring.
-        recent = [t for t in times if t >= ninety]
-        if SKIP_MONTHLY_NUDGE or not journey_active("monthly_partner"):
+        # Monthly invitation. Every threshold below is editable on the admin
+        # page; nothing here is a magic number any more.
+        rules = pathway_rules("monthly_partner")
+        if SKIP_MONTHLY_NUDGE or not journey_active("monthly_partner") or not rules:
             continue
-        if len(recent) >= 2 and pid not in recurring_ids:
+        window = NOW - timedelta(days=rules.get("window_days") or 90)
+        recent = [t for t in times if t >= window]
+        given = sum(d.get("amount_cents") or 0 for d in ds
+                    if (pt := parse_ts(d.get("received_at"))) and pt >= window)
+
+        in_range = len(recent) >= (rules.get("min_events") or 0)
+        # The bound that was missing: someone giving twice a week has already
+        # answered this question, and asking again reads as not paying attention.
+        if rules.get("max_events") is not None and len(recent) > rules["max_events"]:
+            in_range = False
+        if rules.get("min_amount_cents") is not None and given < rules["min_amount_cents"]:
+            in_range = False
+        if rules.get("max_amount_cents") is not None and given > rules["max_amount_cents"]:
+            in_range = False
+        if rules.get("exclude_recurring") and pid in recurring_ids:
+            in_range = False
+
+        if in_range:
             last = last_sent(key, "monthly_nudge")
-            if last and (NOW.date() - datetime.fromisoformat(last).date()).days < MONTHLY_NUDGE_COOLDOWN_DAYS:
+            cooldown = rules.get("cooldown_days") or MONTHLY_NUDGE_COOLDOWN_DAYS
+            if last and (NOW.date() - datetime.fromisoformat(last).date()).days < cooldown:
                 continue
             if not to and pid:
                 to = donor_email(pid, email_cache)
+            if to and rules.get("exclude_staff") and to.lower() in staff:
+                print(f"  SKIP (staff): monthly_nudge -> {to}")
+                continue
             if to and to.lower() not in optout_emails:
                 # House style: God does the seeing, not the pastor. The first
                 # version of this opened "I have noticed your faithfulness in
