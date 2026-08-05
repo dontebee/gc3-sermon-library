@@ -14,9 +14,9 @@ Each .txt has a header block delimited by lines of "=" signs:
     <body text>
 
 Env vars:
-  SUPABASE_URL          your project URL
-  SUPABASE_SERVICE_KEY  the service_role key
-  TRANSCRIPT_FOLDER     folder of .txt files (searched recursively)
+  SUPABASE_URL               your project URL
+  SUPABASE_SERVICE_ROLE_KEY  the service_role key
+  TRANSCRIPT_FOLDER          folder of .txt files (searched recursively)
 
 Note: this loads title, date, series, url, duration, speaker, and body. The
 richer fields (big_idea, themes, scriptures, word_studies, frameworks) come from
@@ -27,7 +27,9 @@ import re
 from datetime import datetime
 from supabase import create_client
 
-sb = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_SERVICE_KEY"])
+import gc3_env
+
+sb = create_client(gc3_env.supabase_url(), gc3_env.service_key())
 FOLDER = os.environ["TRANSCRIPT_FOLDER"]
 
 

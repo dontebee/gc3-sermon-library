@@ -8,9 +8,15 @@ on:
   workflow_dispatch:
     inputs:
       dry_run:
-        description: 'Dry run (print emails instead of sending)'
+        # Defaults ON for manual runs. A hand-triggered run is almost always
+        # someone checking whether the job works, and the cost of guessing
+        # wrong is real mail to real people — on 2026-08-05 a manual run sent
+        # 30 monthly-giving invitations that nobody meant to send. Untick it
+        # deliberately to send for real. The nightly schedule is unaffected:
+        # inputs do not apply to it, so scheduled runs stay live.
+        description: 'Dry run (print emails instead of sending). Untick to send for real.'
         type: boolean
-        default: false
+        default: true
       force_digest:
         description: 'Send the digest even if today is not Monday'
         type: boolean
@@ -31,14 +37,25 @@ jobs:
 
       - name: Run engagement job
         env:
+          # Four spellings, two values, one Supabase project. gc3_env.py picks
+          # whichever is set, preferring the intranet's names, so Doppler only
+          # has to hold one of each.
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           PCO_APP_ID: ${{ secrets.PCO_APP_ID }}
           PCO_SECRET: ${{ secrets.PCO_SECRET }}
-          DIGEST_TO: ${{ vars.DIGEST_TO }}
-          NUDGE_FROM: ${{ vars.NUDGE_FROM }}
-          REPLY_TO: ${{ vars.REPLY_TO }}
+          # Doppler's GitHub sync writes Actions *secrets*, never *variables*,
+          # so read the secret first and keep vars as the fallback for anything
+          # still set by hand.
+          DIGEST_TO: ${{ secrets.DIGEST_TO || vars.DIGEST_TO }}
+          NUDGE_FROM: ${{ secrets.NUDGE_FROM || vars.NUDGE_FROM }}
+          REPLY_TO: ${{ secrets.REPLY_TO || vars.REPLY_TO }}
+          # Set the SKIP_MONTHLY_NUDGE repository variable to 1 to pause the
+          # monthly invitation without silencing celebrations and welcomes.
+          SKIP_MONTHLY_NUDGE: ${{ vars.SKIP_MONTHLY_NUDGE }}
           DRY_RUN: ${{ inputs.dry_run && '1' || '' }}
           FORCE_DIGEST: ${{ inputs.force_digest && '1' || '' }}
         run: python engagement_nudges.py

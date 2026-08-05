@@ -42,7 +42,12 @@ jobs:
 
       - name: Run weekly update
         env:
+          # Four spellings, two values, one Supabase project. gc3_env.py picks
+          # whichever is set, preferring the intranet's names, so Doppler only
+          # has to hold one of each.
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: python weekly_update.py
