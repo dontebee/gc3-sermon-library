@@ -28,7 +28,8 @@ One run does four things:
    totals, first-time givers, new monthly partners), and what this job sent.
 
 Env vars:
-  SUPABASE_URL, SUPABASE_SERVICE_KEY   the database (required)
+  SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY   the database (required; the
+      NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_KEY spellings also work)
   RESEND_API_KEY                       sending (absent = report-only dry run)
   PCO_APP_ID, PCO_SECRET               Planning Center personal access token
                                        (absent = giving section skipped)
@@ -53,6 +54,8 @@ except Exception:
 
 import requests
 
+import gc3_env
+
 CT = ZoneInfo("America/Chicago")
 NOW = datetime.now(timezone.utc)
 WEEK_AGO = NOW - timedelta(days=7)
@@ -64,43 +67,8 @@ STALLED_AFTER_DAYS = 14
 
 GIVING_URL = "https://godchasers.churchcenter.com/giving?frequency=monthly"
 
-# The project URL is public (it ships in every frontend), so it is not really a
-# secret. Tolerate paste mistakes the same way weekly_update.py does.
-DEFAULT_SUPABASE_URL = "https://eibrykdamgyoylnqknao.supabase.co"
-
-
-def _clean_url(raw):
-    u = (raw or "").strip().strip("'\"").rstrip("/")
-    if u and not u.startswith("http"):
-        u = "https://" + u
-    return u
-
-
-SUPABASE_URL = _clean_url(os.environ.get("SUPABASE_URL"))
-if ".supabase.co" not in SUPABASE_URL:
-    if SUPABASE_URL:
-        print(f"WARNING: SUPABASE_URL secret ({SUPABASE_URL!r}) is not a Supabase URL; using {DEFAULT_SUPABASE_URL}")
-    SUPABASE_URL = DEFAULT_SUPABASE_URL
-# The intranet calls this SUPABASE_SERVICE_ROLE_KEY and this repo used to call
-# it SUPABASE_SERVICE_KEY. Two names for one key meant one of them was always
-# the stale copy, so accept either and stop maintaining the collision.
-SERVICE_KEY = (
-    os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
-    or os.environ.get("SUPABASE_SERVICE_KEY")
-    or ""
-).strip().strip("'\"")
-if not SERVICE_KEY:
-    print("ERROR: missing required secret SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_SERVICE_KEY).")
-    sys.exit(1)
-# Fail here with a name, rather than 200 lines later with 'Invalid API key'.
-# Service keys are either a JWT (eyJ...) or the newer sb_secret_ form; an anon
-# key is a JWT too, but it cannot read the tables this job needs.
-if not (SERVICE_KEY.startswith("eyJ") or SERVICE_KEY.startswith("sb_secret_")):
-    print(
-        "ERROR: the Supabase key does not look like a service key "
-        f"(starts with {SERVICE_KEY[:6]!r}). Expected 'eyJ...' or 'sb_secret_...'."
-    )
-    sys.exit(1)
+SUPABASE_URL = gc3_env.supabase_url()
+SERVICE_KEY = gc3_env.service_key()
 
 RESEND_API_KEY = (os.environ.get("RESEND_API_KEY") or "").strip()
 PCO_APP_ID = (os.environ.get("PCO_APP_ID") or "").strip()

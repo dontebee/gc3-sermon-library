@@ -20,6 +20,8 @@ import subprocess
 import sys
 import tempfile
 
+import gc3_env
+
 # Titles often contain emoji (e.g. the red live dot). Make stdout UTF-8 safe so a
 # print never crashes the run on Windows consoles that default to cp1252.
 try:
@@ -36,30 +38,9 @@ EXCLUDE_KEYWORDS = ["official video", "lyric", "worship", "cover",
 ENRICH_MODEL = "claude-sonnet-4-6"  # strong + cost-effective for extraction. Change to
 # "claude-haiku-4-5" for cheaper, or "claude-opus-4-8" for maximum depth.
 
-# The project URL is public (it ships in every frontend), so it is not really a
-# secret. Tolerate common paste mistakes in the SUPABASE_URL secret (quotes,
-# whitespace, missing scheme) and fall back to the known project URL — the
-# service key is the only thing that must be right.
-DEFAULT_SUPABASE_URL = "https://eibrykdamgyoylnqknao.supabase.co"
-
-def _clean_url(raw):
-    u = (raw or "").strip().strip("'\"").rstrip("/")
-    if u and not u.startswith("http"):
-        u = "https://" + u
-    return u
-
-SUPABASE_URL = _clean_url(os.environ.get("SUPABASE_URL"))
-if ".supabase.co" not in SUPABASE_URL:
-    if SUPABASE_URL:
-        print(f"WARNING: SUPABASE_URL secret ({SUPABASE_URL!r}) is not a Supabase URL; using {DEFAULT_SUPABASE_URL}")
-    SUPABASE_URL = DEFAULT_SUPABASE_URL
-SUPABASE_SERVICE_KEY = (os.environ.get("SUPABASE_SERVICE_KEY") or "").strip().strip("'\"")
+SUPABASE_URL = gc3_env.supabase_url()
+SUPABASE_SERVICE_KEY = gc3_env.service_key()
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
-if not SUPABASE_SERVICE_KEY:
-    print("ERROR: missing required secret SUPABASE_SERVICE_KEY. In GitHub: Settings >")
-    print("Secrets and variables > Actions > SUPABASE_SERVICE_KEY = the service_role")
-    print("key from Supabase > project settings > API keys (never the anon key).")
-    sys.exit(1)
 if not ANTHROPIC_API_KEY:
     print("WARNING: ANTHROPIC_API_KEY is not set. New sermons will be saved WITHOUT")
     print("analysis (no scriptures, themes, word studies, or frameworks). Set the key")
