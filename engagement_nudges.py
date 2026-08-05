@@ -79,6 +79,12 @@ DIGEST_TO = (os.environ.get("DIGEST_TO") or "dontebee@gmail.com").strip()
 NUDGE_FROM = (os.environ.get("NUDGE_FROM") or "Pastor Donte <hello@godchasers.church>").strip()
 REPLY_TO = (os.environ.get("REPLY_TO") or "hello@godchasers.church").strip()
 DRY_RUN = os.environ.get("DRY_RUN", "").strip() in ("1", "true", "yes")
+# Lets the celebrations and the first-gift journey keep running while the
+# monthly invitation is paused. Without this the only way to stop the nudge
+# is to disable the whole workflow, which also silences Growth Track
+# milestones and welcomes for new givers — people who are mid-journey and
+# should not go quiet because a different pathway is under review.
+SKIP_MONTHLY_NUDGE = os.environ.get("SKIP_MONTHLY_NUDGE", "").strip() in ("1", "true", "yes")
 MAX_EMAILS = int(os.environ.get("MAX_EMAILS", "30"))
 
 if not RESEND_API_KEY and not DRY_RUN:
@@ -594,6 +600,8 @@ def giving():
 
         # Monthly nudge: 2+ gifts in 90 days, past the journey, not recurring.
         recent = [t for t in times if t >= ninety]
+        if SKIP_MONTHLY_NUDGE:
+            continue
         if len(recent) >= 2 and pid not in recurring_ids:
             last = last_sent(key, "monthly_nudge")
             if last and (NOW.date() - datetime.fromisoformat(last).date()).days < MONTHLY_NUDGE_COOLDOWN_DAYS:

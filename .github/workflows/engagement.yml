@@ -53,6 +53,9 @@ jobs:
           DIGEST_TO: ${{ secrets.DIGEST_TO || vars.DIGEST_TO }}
           NUDGE_FROM: ${{ secrets.NUDGE_FROM || vars.NUDGE_FROM }}
           REPLY_TO: ${{ secrets.REPLY_TO || vars.REPLY_TO }}
+          # Set the SKIP_MONTHLY_NUDGE repository variable to 1 to pause the
+          # monthly invitation without silencing celebrations and welcomes.
+          SKIP_MONTHLY_NUDGE: ${{ vars.SKIP_MONTHLY_NUDGE }}
           DRY_RUN: ${{ inputs.dry_run && '1' || '' }}
           FORCE_DIGEST: ${{ inputs.force_digest && '1' || '' }}
         run: python engagement_nudges.py
