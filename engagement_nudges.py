@@ -207,7 +207,7 @@ def staff_emails():
 
 
 def pathway_active(key):
-    """Is this pathway switched on at /admin/journeys?
+    """Is this pathway switched on at /admin/pathways?
 
     The intranet keeps one on/off switch per pathway, and on 2026-08-05 every
     one of them was off — yet this job sent 30 monthly invitations, because it
@@ -218,18 +218,14 @@ def pathway_active(key):
     not answer all mean "do not send". The cost of staying quiet for a day is
     a day; the cost of sending is unrecallable.
 
-    The table is still called journey_settings and the route is still
-    /admin/journeys. Those are Postgres and URL names that the intranet also
-    uses, so renaming them is a coordinated change across both repos, not a
-    tidy-up here. Read them as Pathway settings until that happens.
     """
     global _pathway_active_cache
     if _pathway_active_cache is None:
         try:
-            rows = fetch_all("journey_settings", "journey,active")
-            _pathway_active_cache = {r["journey"]: bool(r.get("active")) for r in rows}
+            rows = fetch_all("pathway_settings", "pathway,active")
+            _pathway_active_cache = {r["pathway"]: bool(r.get("active")) for r in rows}
         except Exception as e:
-            print(f"  WARNING: could not read journey_settings ({e}); sending nothing.")
+            print(f"  WARNING: could not read pathway_settings ({e}); sending nothing.")
             _pathway_active_cache = {}
     if not _pathway_active_cache.get("__all__", False):
         return False

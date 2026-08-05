@@ -14,7 +14,7 @@ say Pathways.
 ## The hard rule
 
 **Nothing in this repo sends to a member.** Member-facing email belongs to the
-Pathways engine in `gc3-intranet` (`src/lib/journeys/`), which has the on/off
+Pathways engine in `gc3-intranet` (`src/lib/pathways/`), which has the on/off
 switch, the shared suppression list, unsubscribe links, rate limits, editable
 rules, and an admin page.
 
@@ -27,7 +27,7 @@ What legitimately lives here:
 **Why the rule exists.** On 2026-08-05 `engagement_nudges.py` sent 30
 monthly-partner invitations to donors who had given $38,759 in the previous 90
 days — including six staff and people already giving weekly — while every
-Pathway was switched off at `/admin/journeys`. It ran because it was a second
+Pathway was switched off at `/admin/pathways`. It ran because it was a second
 emailing system with its own logic, its own tables and no switch. It even
 reimplemented `first_gift`, which already existed as a Pathway.
 
@@ -42,7 +42,7 @@ repeat that. Build it as a Pathway instead.
 
 Every member-facing send must, without exception:
 
-- call `journey_active(key)` first — it **fails closed**: unknown pathway,
+- call `pathway_active(key)` first — it **fails closed**: unknown pathway,
   missing row, master switch off, or database unreachable all mean send nothing
 - check `load_suppression()`, the same `email_recipients` list the intranet
   uses, so an unsubscribe anywhere means everywhere
