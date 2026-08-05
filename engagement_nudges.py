@@ -161,7 +161,49 @@ def parse_ts(s):
         return None
 
 
-def send_email(to, subject, html_body, kind, capped=True):
+def load_suppression():
+    """The one list that says who this house does not email.
+
+    It lives in email_recipients, written by the intranet's journey engine.
+    This job used to check only gt_profiles.email_optout, which meant someone
+    who unsubscribed from a pathway kept receiving these — the unsubscribe
+    worked in one system and was invisible to the other. Same rules as
+    guardrails.ts: unsubscribed, complained, or bounced twice.
+    """
+    suppressed, tokens = set(), {}
+    for r in fetch_all("email_recipients", "email,token,unsubscribed_at,bounce_count,complained"):
+        em = (r.get("email") or "").strip().lower()
+        if not em:
+            continue
+        tokens[em] = r.get("token")
+        if r.get("unsubscribed_at") or r.get("complained") or (r.get("bounce_count") or 0) >= 2:
+            suppressed.add(em)
+    return suppressed, tokens
+
+
+def unsubscribe_url(to, tokens):
+    """The recipient's own unsubscribe link, minted if they are new.
+
+    Every letter carries one. An email from a church asking for money with no
+    way out is the kind of thing that costs a domain its reputation, and more
+    to the point it is not how you treat people.
+    """
+    em = (to or "").strip().lower()
+    if not em:
+        return None
+    tok = tokens.get(em)
+    if not tok:
+        try:
+            res = sb.table("email_recipients").upsert(
+                {"email": em}, on_conflict="email").execute()
+            tok = ((res.data or [{}])[0] or {}).get("token")
+        except Exception as e:
+            print(f"  WARNING: could not mint unsubscribe token for {em}: {e}")
+        tokens[em] = tok
+    return f"https://mygc3.church/unsubscribe?t={tok}" if tok else None
+
+
+def send_email(to, subject, html_body, kind, capped=True, unsub=None):
     """Send through Resend, honoring DRY_RUN and the per-run cap."""
     if capped and len(emails_sent) >= MAX_EMAILS:
         print(f"  SKIP (cap of {MAX_EMAILS} reached): {kind} -> {to}")
@@ -170,11 +212,19 @@ def send_email(to, subject, html_body, kind, capped=True):
         print(f"  DRY RUN {kind} -> {to}: {subject}")
         emails_sent.append((kind, to))
         return True
+    payload = {"from": NUDGE_FROM, "to": [to], "reply_to": REPLY_TO,
+               "subject": subject, "html": html_body}
+    if unsub:
+        # Gmail and Outlook surface this as a native Unsubscribe button, which
+        # is far better for the domain than someone reaching for "spam".
+        payload["headers"] = {
+            "List-Unsubscribe": f"<{unsub}>",
+            "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+        }
     r = requests.post(
         "https://api.resend.com/emails",
         headers={"Authorization": f"Bearer {RESEND_API_KEY}"},
-        json={"from": NUDGE_FROM, "to": [to], "reply_to": REPLY_TO,
-              "subject": subject, "html": html_body},
+        json=payload,
         timeout=30,
     )
     if r.status_code in (200, 201):
@@ -186,7 +236,7 @@ def send_email(to, subject, html_body, kind, capped=True):
     return False
 
 
-def letter(first_name, paragraphs, cta=None):
+def letter(first_name, paragraphs, cta=None, unsub=None):
     """A short personal note styled as a letter from Pastor Donte."""
     name = html.escape(first_name or "friend")
     body = "".join(
@@ -206,7 +256,16 @@ def letter(first_name, paragraphs, cta=None):
         f"{body}{button}"
         '<p style="margin:22px 0 0;font-size:16px;line-height:1.6;color:#222;">'
         "With you and for you,<br>Pastor Donte<br>"
-        '<span style="color:#777;font-size:14px;">GodChasers Church</span></p></div>'
+        '<span style="color:#777;font-size:14px;">GodChasers Church</span></p>'
+        + (
+            '<p style="margin:26px 0 0;padding-top:14px;border-top:1px solid #ececec;'
+            'font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.5;color:#9aa0a6;">'
+            "GodChasers Church &middot; San Antonio, TX<br>"
+            f'Don\'t want these notes? <a href="{html.escape(unsub, quote=True)}" '
+            'style="color:#9aa0a6;">Unsubscribe</a>.</p>'
+            if unsub else ""
+        )
+        + "</div>"
     )
 
 
@@ -249,6 +308,7 @@ def growth_track():
 
     celebrate_cutoff = NOW - timedelta(days=CELEBRATE_WINDOW_DAYS)
     milestones, active, celebrated = [], [], []
+    gt_suppressed, gt_tokens = load_suppression()
 
     for uid, done in per_user.items():
         done_keys = set(done) & all_keys
@@ -284,12 +344,15 @@ def growth_track():
                 subject = "You finished Growth Track. I'm proud of you."
             else:
                 paras = [
-                    f"I saw that you just completed the {html.escape(label)} phase of Growth Track, and I wanted you to hear it from me: well done.",
+                    f"You finished the {html.escape(label)} phase of Growth Track, and that deserves to be said out loud: well done.",
                     "Every lesson you finish is a step deeper into who God is calling you to be. Keep going, the next phase is ready when you are.",
                     "If anything in this phase raised questions, reply to this email. I read these.",
                 ]
                 subject = f"You finished {label}. Keep going!"
-            if send_email(to, subject, letter(first, paras), kind):
+            if to.lower() in gt_suppressed:
+                continue
+            unsub = unsubscribe_url(to, gt_tokens)
+            if send_email(to, subject, letter(first, paras, None, unsub), kind, unsub=unsub):
                 celebrated.append((full, label))
                 if not DRY_RUN:
                     sb.table("gt_email_log").insert({"user_id": uid, "kind": kind}).execute()
@@ -508,6 +571,31 @@ def donor_email(pid, cache):
     return email
 
 
+def donor_first_name(pid, cache):
+    """A donor's first name, from PCO People.
+
+    Giving does not carry names. Its donation payload sideloads only the
+    person's id, so `include=person` on /giving/v2/donations leaves the name
+    empty — which is why every letter opened "friend," until this existed.
+    Names live in People, the same place the email lookup already goes.
+    """
+    if pid in cache:
+        return cache[pid]
+    name = None
+    try:
+        data = pco_get(f"/people/v2/people/{pid}")
+        attrs = (data.get("data") or {}).get("attributes", {})
+        # nickname first: it is what the person actually answers to.
+        name = (attrs.get("nickname") or attrs.get("first_name") or "").strip() or None
+        full = " ".join(x for x in (attrs.get("first_name"), attrs.get("last_name")) if x)
+        if full:
+            sb.table("giving_gifts").update({"donor_name": full}).eq("pco_person_id", pid).execute()
+    except Exception as e:
+        print(f"  WARNING: name lookup failed for person {pid}: {e}")
+    cache[pid] = name
+    return name
+
+
 def donor_phone(pid):
     """Best phone number for a donor, for the digest's personal-touch prompts."""
     try:
@@ -545,6 +633,7 @@ def giving():
         donors.setdefault(key, []).append(g)
 
     email_cache = {}
+    name_cache = {}
     first_cutoff = NOW - timedelta(days=FIRST_GIFT_WINDOW_DAYS)
     ninety = NOW - timedelta(days=90)
     journey_span = max(s["day"] for s in JOURNEY) + JOURNEY_CATCHUP_DAYS
@@ -558,7 +647,9 @@ def giving():
     week_count = len(week_gifts)
     week_total = sum(g.get("amount_cents") or 0 for g in week_gifts)
 
-    optout_emails = set()
+    # Two opt-out sources, one set: the Growth Track flag and the intranet's
+    # shared suppression list. An unsubscribe anywhere has to mean everywhere.
+    optout_emails, unsub_tokens = load_suppression()
     gt_profiles = {p["id"]: p for p in fetch_all("gt_profiles", "id,email_optout")}
     for uid, em in auth_emails().items():
         if gt_profiles.get(uid, {}).get("email_optout"):
@@ -568,9 +659,13 @@ def giving():
         times = sorted(t for t in (parse_ts(d["received_at"]) for d in ds) if t)
         if not times:
             continue
-        name = next((d["donor_name"] for d in ds if d.get("donor_name")), None) or "friend"
-        first = name.split(" ")[0]
+        name = next((d["donor_name"] for d in ds if d.get("donor_name")), None)
         pid = ds[0].get("pco_person_id")
+        # Only ask People for a name when the synced rows do not have one.
+        # Cached, so a donor costs one lookup per run no matter how many gifts.
+        if not name and pid:
+            name = donor_first_name(pid, name_cache)
+        first = (name or "friend").split(" ")[0]
         to = next((d.get("donor_email") for d in ds if d.get("donor_email")), None)
 
         # 90 day generosity journey: fires while the first gift is fresh enough.
@@ -587,9 +682,10 @@ def giving():
                 if not to and pid:
                     to = donor_email(pid, email_cache)
                 if to and to.lower() not in optout_emails:
+                    unsub = unsubscribe_url(to, unsub_tokens)
                     if send_email(to, step["subject"],
-                                  letter(first, step["paras"], step.get("cta")),
-                                  step["kind"]):
+                                  letter(first, step["paras"], step.get("cta"), unsub),
+                                  step["kind"], unsub=unsub):
                         if step["kind"] == "first_gift":
                             run_welcomed.add(key)
                         if not DRY_RUN:
@@ -609,14 +705,18 @@ def giving():
             if not to and pid:
                 to = donor_email(pid, email_cache)
             if to and to.lower() not in optout_emails:
+                # House style: God does the seeing, not the pastor. The first
+                # version of this opened "I have noticed your faithfulness in
+                # giving", which reads as a man reviewing giving records.
                 paras = [
-                    "I have noticed your faithfulness in giving, and I want you to know it does not go unseen, by me or by God.",
-                    "Would you pray about taking one more step: becoming a monthly partner? Consistent giving is what lets us plan boldly, and it turns your generosity into a rhythm instead of a decision you have to remake every time.",
-                    "No pressure and no obligation. If it is not your season, that is okay. But if God nudges you, it takes about a minute to set up.",
+                    "Steady generosity is a quiet thing. It rarely gets noticed, and it does not need to be. God is not forgetful about what is done without announcement.",
+                    "Some people find it simpler to give on a rhythm than to decide again every time. Not more, just settled. If that is your season, it takes about a minute.",
+                    '<span style="color:#5f6368;font-style:italic;">"God is not unrighteous to forget your work and labour of love." &mdash; Hebrews 6:10</span>',
                 ]
+                unsub = unsubscribe_url(to, unsub_tokens)
                 if send_email(to, "Would you pray about becoming a monthly partner?",
-                              letter(first, paras, ("Set up monthly giving", GIVING_URL)),
-                              "monthly_nudge"):
+                              letter(first, paras, ("Set up monthly giving", GIVING_URL), unsub),
+                              "monthly_nudge", unsub=unsub):
                     nudged.append(name)
                     if not DRY_RUN:
                         sb.table("giving_nudge_log").upsert(
