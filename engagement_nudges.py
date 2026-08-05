@@ -35,8 +35,8 @@ Env vars:
                                        (absent = giving section skipped)
 Optional:
   DIGEST_TO     where the weekly digest goes (default dontebee@gmail.com)
-  NUDGE_FROM    From header (default "Pastor Donte <pastor@godchasers.church>")
-  REPLY_TO      Reply-To on every send (default dontebee@gmail.com)
+  NUDGE_FROM    From header (default "Pastor Donte <hello@godchasers.church>")
+  REPLY_TO      Reply-To on every send (default hello@godchasers.church)
   DRY_RUN       "1" to print instead of send
   MAX_EMAILS    cap on member and giver emails per run (default 30)
 """
@@ -74,8 +74,10 @@ RESEND_API_KEY = (os.environ.get("RESEND_API_KEY") or "").strip()
 PCO_APP_ID = (os.environ.get("PCO_APP_ID") or "").strip()
 PCO_SECRET = (os.environ.get("PCO_SECRET") or "").strip()
 DIGEST_TO = (os.environ.get("DIGEST_TO") or "dontebee@gmail.com").strip()
-NUDGE_FROM = (os.environ.get("NUDGE_FROM") or "Pastor Donte <pastor@godchasers.church>").strip()
-REPLY_TO = (os.environ.get("REPLY_TO") or "dontebee@gmail.com").strip()
+# The name stays personal because PD signs these; the address is the house
+# inbox so a reply reaches someone who can answer it the same day.
+NUDGE_FROM = (os.environ.get("NUDGE_FROM") or "Pastor Donte <hello@godchasers.church>").strip()
+REPLY_TO = (os.environ.get("REPLY_TO") or "hello@godchasers.church").strip()
 DRY_RUN = os.environ.get("DRY_RUN", "").strip() in ("1", "true", "yes")
 MAX_EMAILS = int(os.environ.get("MAX_EMAILS", "30"))
 
