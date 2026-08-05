@@ -12,11 +12,11 @@ One run does four things:
    giving_gifts table (needs PCO_APP_ID and PCO_SECRET, a PCO personal access
    token). Skipped gracefully when the secrets are absent.
 
-3. Giving journey and nudges. First-time givers enter a 90 day generosity
-   journey: a personal welcome from Pastor Donte on day 0 (kind first_gift),
+3. Giving pathway and nudges. First-time givers enter a 90 day generosity
+   pathway: a personal welcome from Pastor Donte on day 0 (kind first_gift),
    then touchpoints on day 5, day 30 (with a monthly partner invitation), and
    day 90 (kinds first_gift_d5, first_gift_d30, first_gift_d90). Repeat givers
-   past the journey who are not on a recurring schedule get a warm invitation
+   past the pathway who are not on a recurring schedule get a warm invitation
    to become monthly givers (kind monthly_nudge, at most once every 60 days).
    Logged in giving_nudge_log, keyed by donor, because givers are not always
    platform users. The weekly digest also prompts the personal touches that
@@ -61,7 +61,7 @@ NOW = datetime.now(timezone.utc)
 WEEK_AGO = NOW - timedelta(days=7)
 CELEBRATE_WINDOW_DAYS = 10   # only celebrate milestones reached this recently
 FIRST_GIFT_WINDOW_DAYS = 14  # a "first gift" counts as new for this long
-JOURNEY_CATCHUP_DAYS = 14    # how late a journey step may still be sent
+PATHWAY_CATCHUP_DAYS = 14    # how late a pathway step may still be sent
 MONTHLY_NUDGE_COOLDOWN_DAYS = 60
 STALLED_AFTER_DAYS = 14
 
@@ -79,10 +79,10 @@ DIGEST_TO = (os.environ.get("DIGEST_TO") or "dontebee@gmail.com").strip()
 NUDGE_FROM = (os.environ.get("NUDGE_FROM") or "Pastor Donte <hello@godchasers.church>").strip()
 REPLY_TO = (os.environ.get("REPLY_TO") or "hello@godchasers.church").strip()
 DRY_RUN = os.environ.get("DRY_RUN", "").strip() in ("1", "true", "yes")
-# Lets the celebrations and the first-gift journey keep running while the
+# Lets the celebrations and the first-gift pathway keep running while the
 # monthly invitation is paused. Without this the only way to stop the nudge
 # is to disable the whole workflow, which also silences Growth Track
-# milestones and welcomes for new givers — people who are mid-journey and
+# milestones and welcomes for new givers — people who are mid-pathway and
 # should not go quiet because a different pathway is under review.
 SKIP_MONTHLY_NUDGE = os.environ.get("SKIP_MONTHLY_NUDGE", "").strip() in ("1", "true", "yes")
 MAX_EMAILS = int(os.environ.get("MAX_EMAILS", "30"))
@@ -161,7 +161,7 @@ def parse_ts(s):
         return None
 
 
-_journey_active_cache = None
+_pathway_active_cache = None
 _pathway_rules_cache = None
 
 
@@ -206,35 +206,40 @@ def staff_emails():
         return set()
 
 
-def journey_active(key):
+def pathway_active(key):
     """Is this pathway switched on at /admin/journeys?
 
-    The intranet keeps one on/off switch per pathway in journey_settings, and
-    on 2026-08-05 every one of them was off — yet this job sent 30 monthly
-    invitations, because it had never heard of the switch. A kill switch that
-    only governs half the senders is not a kill switch.
+    The intranet keeps one on/off switch per pathway, and on 2026-08-05 every
+    one of them was off — yet this job sent 30 monthly invitations, because it
+    had never heard of the switch. A kill switch that governs only half the
+    senders is not a kill switch.
 
     Fails CLOSED. An unknown pathway, a missing row, or a database that will
     not answer all mean "do not send". The cost of staying quiet for a day is
     a day; the cost of sending is unrecallable.
+
+    The table is still called journey_settings and the route is still
+    /admin/journeys. Those are Postgres and URL names that the intranet also
+    uses, so renaming them is a coordinated change across both repos, not a
+    tidy-up here. Read them as Pathway settings until that happens.
     """
-    global _journey_active_cache
-    if _journey_active_cache is None:
+    global _pathway_active_cache
+    if _pathway_active_cache is None:
         try:
             rows = fetch_all("journey_settings", "journey,active")
-            _journey_active_cache = {r["journey"]: bool(r.get("active")) for r in rows}
+            _pathway_active_cache = {r["journey"]: bool(r.get("active")) for r in rows}
         except Exception as e:
             print(f"  WARNING: could not read journey_settings ({e}); sending nothing.")
-            _journey_active_cache = {}
-    if not _journey_active_cache.get("__all__", False):
+            _pathway_active_cache = {}
+    if not _pathway_active_cache.get("__all__", False):
         return False
-    return _journey_active_cache.get(key, False)
+    return _pathway_active_cache.get(key, False)
 
 
 def load_suppression():
     """The one list that says who this house does not email.
 
-    It lives in email_recipients, written by the intranet's journey engine.
+    It lives in email_recipients, written by the intranet's Pathways engine.
     This job used to check only gt_profiles.email_optout, which meant someone
     who unsubscribed from a pathway kept receiving these — the unsubscribe
     worked in one system and was invisible to the other. Same rules as
@@ -419,7 +424,7 @@ def growth_track():
                     "If anything in this phase raised questions, reply to this email. I read these.",
                 ]
                 subject = f"You finished {label}. Keep going!"
-            if to.lower() in gt_suppressed or not journey_active("growth_track_celebrations"):
+            if to.lower() in gt_suppressed or not pathway_active("growth_track_celebrations"):
                 continue
             unsub = unsubscribe_url(to, gt_tokens)
             if send_email(to, subject, letter(first, paras, None, unsub), kind, unsub=unsub):
@@ -459,11 +464,11 @@ def growth_track():
 
 # ---------------------------------------------------------------- giving
 
-# The 90 day generosity journey for first-time givers. Each step fires once the
+# The 90 day generosity pathway for first-time givers. Each step fires once the
 # donor's first gift is at least `day` days old, and is skipped entirely if it
-# is more than JOURNEY_CATCHUP_DAYS late (so donors who gave long before this
+# is more than PATHWAY_CATCHUP_DAYS late (so donors who gave long before this
 # automation existed never get stale touchpoints). One step per donor per run.
-JOURNEY = [
+PATHWAY_STEPS = [
     {
         "kind": "first_gift", "day": 0,
         "subject": "You just did something most people never do",
@@ -706,7 +711,7 @@ def giving():
     name_cache = {}
     first_cutoff = NOW - timedelta(days=FIRST_GIFT_WINDOW_DAYS)
     ninety = NOW - timedelta(days=90)
-    journey_span = max(s["day"] for s in JOURNEY) + JOURNEY_CATCHUP_DAYS
+    pathway_span = max(s["day"] for s in PATHWAY_STEPS) + PATHWAY_CATCHUP_DAYS
     first_timers, nudged, touches = [], [], []
     run_welcomed = set()
 
@@ -739,20 +744,20 @@ def giving():
         first = (name or "friend").split(" ")[0]
         to = next((d.get("donor_email") for d in ds if d.get("donor_email")), None)
 
-        # 90 day generosity journey: fires while the first gift is fresh enough.
+        # 90 day generosity pathway: fires while the first gift is fresh enough.
         days_since_first = (NOW - times[0]).days
         if times[0] >= first_cutoff:
             first_timers.append(name)
-        if days_since_first <= journey_span:
+        if days_since_first <= pathway_span:
             step = next(
-                (s for s in JOURNEY
-                 if s["day"] <= days_since_first <= s["day"] + JOURNEY_CATCHUP_DAYS
+                (s for s in PATHWAY_STEPS
+                 if s["day"] <= days_since_first <= s["day"] + PATHWAY_CATCHUP_DAYS
                  and not last_sent(key, s["kind"])),
                 None)
             # first_gift also exists as a pathway in the intranet engine. One
             # switch governs both, so activating it there cannot accidentally
             # produce two welcomes from two systems.
-            if step and journey_active("first_gift"):
+            if step and pathway_active("first_gift"):
                 if not to and pid:
                     to = donor_email(pid, email_cache)
                 if to and to.lower() not in optout_emails:
@@ -766,12 +771,12 @@ def giving():
                             sb.table("giving_nudge_log").upsert(
                                 {"donor_key": key, "kind": step["kind"]},
                                 on_conflict="donor_key,kind,sent_on").execute()
-            continue  # donors inside the journey never get the generic nudge
+            continue  # donors inside the pathway never get the generic nudge
 
         # Monthly invitation. Every threshold below is editable on the admin
         # page; nothing here is a magic number any more.
         rules = pathway_rules("monthly_partner")
-        if SKIP_MONTHLY_NUDGE or not journey_active("monthly_partner") or not rules:
+        if SKIP_MONTHLY_NUDGE or not pathway_active("monthly_partner") or not rules:
             continue
         window = NOW - timedelta(days=rules.get("window_days") or 90)
         recent = [t for t in times if t >= window]
@@ -819,7 +824,7 @@ def giving():
                             {"donor_key": key, "kind": "monthly_nudge"},
                             on_conflict="donor_key,kind,sent_on").execute()
 
-    # Personal-touch prompts for the digest: everyone welcomed into the journey
+    # Personal-touch prompts for the digest: everyone welcomed into the pathway
     # in the last 7 days (any run), with a phone number when PCO has one.
     week_ago_date = (NOW - timedelta(days=7)).date().isoformat()
     welcomed = run_welcomed | {
@@ -972,7 +977,7 @@ def main():
     gt = growth_track()
     giv = giving()
     intra = intranet()
-    # The job runs daily so journey steps land on time; the digest ships once a
+    # The job runs daily so pathway steps land on time; the digest ships once a
     # week (Mondays, Central) unless FORCE_DIGEST asks for it now.
     digest_day = NOW.astimezone(CT).weekday() == 0
     force = os.environ.get("FORCE_DIGEST", "").strip() in ("1", "true", "yes")
