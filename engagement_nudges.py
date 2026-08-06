@@ -386,49 +386,56 @@ def recurring_person_ids():
         offset += 100
 
 
-def donor_email(pid, cache):
-    """Look up a donor's primary email in PCO People, at most once per run."""
-    if pid in cache:
-        return cache[pid]
-    email = None
-    try:
-        data = pco_get(f"/people/v2/people/{pid}/emails")
-        rows = data.get("data", [])
-        primary = [r for r in rows if r.get("attributes", {}).get("primary")]
-        pick = (primary or rows)
-        if pick:
-            email = pick[0]["attributes"].get("address")
-    except Exception as e:
-        print(f"  WARNING: email lookup failed for person {pid}: {e}")
-    cache[pid] = email
-    if email:
-        sb.table("giving_gifts").update({"donor_email": email}).eq("pco_person_id", pid).execute()
-    return email
+def donor_identity(pid, cache):
+    """A donor's first name and email from PCO People, in ONE request.
 
+    Planning Center Giving hands back a person id and nothing else — no name,
+    no address — and the Pathways engine enrols first_gift and monthly_partner
+    straight off giving_gifts. Those two columns are the whole reason this
+    function exists; without them the pathways reach nobody and any letter
+    that did go out would open "friend,".
 
-def donor_first_name(pid, cache):
-    """A donor's first name, from PCO People.
+    `include=emails` returns the person and their addresses together, so this
+    costs one call per donor rather than two. With thousands of donors to
+    backfill, halving the calls is the difference between finishing and
+    spending the run inside PCO's rate limiter.
 
-    Giving does not carry names. Its donation payload sideloads only the
-    person's id, so `include=person` on /giving/v2/donations leaves the name
-    empty — which is why every letter opened "friend," until this existed.
-    Names live in People, the same place the email lookup already goes.
+    Writes both columns back, so a donor is looked up once ever rather than
+    once per run.
     """
     if pid in cache:
         return cache[pid]
-    name = None
+    first, email, full = None, None, None
     try:
-        data = pco_get(f"/people/v2/people/{pid}")
+        data = pco_get(f"/people/v2/people/{pid}", {"include": "emails"})
         attrs = (data.get("data") or {}).get("attributes", {})
         # nickname first: it is what the person actually answers to.
-        name = (attrs.get("nickname") or attrs.get("first_name") or "").strip() or None
-        full = " ".join(x for x in (attrs.get("first_name"), attrs.get("last_name")) if x)
-        if full:
-            sb.table("giving_gifts").update({"donor_name": full}).eq("pco_person_id", pid).execute()
+        first = (attrs.get("nickname") or attrs.get("first_name") or "").strip() or None
+        full = " ".join(x for x in (attrs.get("first_name"), attrs.get("last_name")) if x) or None
+        rows = [i for i in data.get("included", []) if i.get("type") == "Email"]
+        primary = [r for r in rows if r.get("attributes", {}).get("primary")]
+        pick = primary or rows
+        if pick:
+            email = pick[0]["attributes"].get("address")
     except Exception as e:
-        print(f"  WARNING: name lookup failed for person {pid}: {e}")
-    cache[pid] = name
-    return name
+        print(f"  WARNING: identity lookup failed for person {pid}: {e}")
+
+    patch = {}
+    if full:
+        patch["donor_name"] = full
+    if email:
+        patch["donor_email"] = email
+    if patch:
+        try:
+            sb.table("giving_gifts").update(patch).eq("pco_person_id", pid).execute()
+        except Exception as e:
+            print(f"  WARNING: could not save identity for person {pid}: {e}")
+
+    cache[pid] = (first, email)
+    return cache[pid]
+
+
+
 
 
 def donor_phone(pid):
@@ -463,8 +470,11 @@ def giving():
             continue
         donors.setdefault(key, []).append(g)
 
-    email_cache = {}
-    name_cache = {}
+    identity_cache = {}
+    # A list so the loop below can decrement it. Roughly 350 PCO calls keeps a
+    # run comfortably inside its window even when every donor needs looking up;
+    # raise it with BACKFILL_PER_RUN once the backlog is cleared.
+    backfill_budget = [int(os.environ.get("BACKFILL_PER_RUN", "350"))]
     first_cutoff = NOW - timedelta(days=FIRST_GIFT_WINDOW_DAYS)
     ninety = NOW - timedelta(days=90)
     first_timers, nudged, touches = [], [], []
@@ -477,7 +487,11 @@ def giving():
     week_count = len(week_gifts)
     week_total = sum(g.get("amount_cents") or 0 for g in week_gifts)
 
-    for key, ds in donors.items():
+    def _latest(pair):
+        ts = [t for t in (parse_ts(d.get("received_at")) for d in pair[1]) if t]
+        return max(ts) if ts else datetime.min.replace(tzinfo=timezone.utc)
+
+    for key, ds in sorted(donors.items(), key=_latest, reverse=True):
         times = sorted(t for t in (parse_ts(d["received_at"]) for d in ds) if t)
         if not times:
             continue
@@ -487,16 +501,21 @@ def giving():
 
         # Backfill name and email from PCO People onto the gift rows.
         #
-        # This is now the point of this loop. Giving returns a person id but
+        # This is the point of this loop now. Giving returns a person id but
         # never a name or an address, and the Pathways engine enrols the
         # first-gift and monthly-partner pathways straight off giving_gifts —
         # so if these columns stay empty, those pathways reach nobody and any
-        # letter that did go out would open "friend,". Both lookups are cached
-        # per run, so a donor costs one call however many gifts they have.
-        if pid and not name:
-            name = donor_first_name(pid, name_cache)
-        if pid and not to:
-            to = donor_email(pid, email_cache)
+        # letter that did go out would open "friend,".
+        #
+        # Budgeted, because there are thousands of donors to catch up on and
+        # PCO rate-limits hard. Donors are walked newest gift first, so the
+        # people a pathway might actually reach are filled in first and the
+        # long tail catches up over subsequent runs.
+        if pid and (not name or not to) and backfill_budget[0] > 0:
+            backfill_budget[0] -= 1
+            got_name, got_email = donor_identity(pid, identity_cache)
+            name = name or got_name
+            to = to or got_email
 
         # Both the first-gift welcome and the monthly invitation are Pathways
         # now, enrolled and sent by gc3-intranet from this same table. Nothing
