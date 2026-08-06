@@ -140,6 +140,24 @@ def auth_emails():
     return out
 
 
+def _int_env(name, default):
+    """An integer from the environment, tolerating unset, empty and rubbish.
+
+    GitHub passes an unfilled workflow_dispatch input through as an empty
+    string rather than omitting it, so os.environ.get(name, default) hands
+    back "" and int() raises. Fall back rather than fail the run over an
+    input someone left blank on purpose.
+    """
+    raw = (os.environ.get(name) or "").strip()
+    if not raw:
+        return default
+    try:
+        return max(0, int(raw))
+    except ValueError:
+        print(f"NOTE: {name}={raw!r} is not a number; using {default}.")
+        return default
+
+
 def parse_ts(s):
     if not s:
         return None
@@ -474,7 +492,9 @@ def giving():
     # A list so the loop below can decrement it. Roughly 350 PCO calls keeps a
     # run comfortably inside its window even when every donor needs looking up;
     # raise it with BACKFILL_PER_RUN once the backlog is cleared.
-    backfill_budget = [int(os.environ.get("BACKFILL_PER_RUN", "350"))]
+    # A list so the loop can decrement it. Tolerates an unset OR empty value:
+    # the workflow passes "" when the input is left blank, and int("") raises.
+    backfill_budget = [_int_env("BACKFILL_PER_RUN", 350)]
     first_cutoff = NOW - timedelta(days=FIRST_GIFT_WINDOW_DAYS)
     ninety = NOW - timedelta(days=90)
     first_timers, nudged, touches = [], [], []

@@ -21,6 +21,14 @@ on:
         description: 'Send the digest even if today is not Monday'
         type: boolean
         default: true
+      backfill_per_run:
+        # The nightly default of 350 is deliberately gentle. A measured run
+        # does ~350 lookups in 100 seconds, so clearing the whole backlog is
+        # about fifteen minutes - raise this on a manual run to catch up in
+        # one go rather than over a week of nights.
+        description: 'Donor name/email lookups this run (blank = 350)'
+        type: string
+        default: ''
 
 jobs:
   engagement:
@@ -56,6 +64,7 @@ jobs:
           # Set the SKIP_MONTHLY_NUDGE repository variable to 1 to pause the
           # monthly invitation without silencing celebrations and welcomes.
           SKIP_MONTHLY_NUDGE: ${{ vars.SKIP_MONTHLY_NUDGE }}
+          BACKFILL_PER_RUN: ${{ inputs.backfill_per_run }}
           DRY_RUN: ${{ inputs.dry_run && '1' || '' }}
           FORCE_DIGEST: ${{ inputs.force_digest && '1' || '' }}
         run: python engagement_nudges.py
