@@ -1,31 +1,27 @@
-"""Weekly engagement job: Growth Track movement, giving celebrations, digest.
+"""Daily engagement job: giving sync, Growth Track reporting, Monday digest.
 
-One run does four things:
+**This job does not email members.** It emails DIGEST_TO and nobody else.
+Every member-facing note — the first-gift welcome, the monthly-partner
+invitation, GrowthTrack milestones — is a Pathway in gc3-intranet, where the
+on/off switch, the shared suppression list, unsubscribe links, editable rules
+and the admin page live. See CLAUDE.md for why that rule exists.
 
-1. Growth Track milestones. Reads gt_progress and celebrates, by email from
-   Pastor Donte, anyone who just finished a phase (GATHER, GROW, GO) or the
-   whole course. Sends are logged to gt_email_log (kinds celebrate_gather,
-   celebrate_grow, celebrate_go, celebrate_course) so nobody is emailed twice,
-   and email_optout on gt_profiles is respected.
+One run does three things:
 
-2. Giving sync. Pulls donations from Planning Center Giving into the
-   giving_gifts table (needs PCO_APP_ID and PCO_SECRET, a PCO personal access
-   token). Skipped gracefully when the secrets are absent.
+1. Giving sync. Pulls donations from Planning Center Giving into giving_gifts,
+   then backfills each donor's name and email from Planning Center People.
+   Giving hands back a person id but never a name or an address, and the
+   Pathways engine enrols first_gift and monthly_partner straight off this
+   table — so those two columns are the whole point, not decoration.
 
-3. Giving pathway and nudges. First-time givers enter a 90 day generosity
-   pathway: a personal welcome from Pastor Donte on day 0 (kind first_gift),
-   then touchpoints on day 5, day 30 (with a monthly partner invitation), and
-   day 90 (kinds first_gift_d5, first_gift_d30, first_gift_d90). Repeat givers
-   past the pathway who are not on a recurring schedule get a warm invitation
-   to become monthly givers (kind monthly_nudge, at most once every 60 days).
-   Logged in giving_nudge_log, keyed by donor, because givers are not always
-   platform users. The weekly digest also prompts the personal touches that
-   should not be automated: a text from the pastor and a handwritten note.
+2. Growth Track reporting. Reads gt_progress to work out who reached a
+   milestone, who is active, and who has gone quiet. Reporting only; the
+   congratulation is the growth_track_celebrations Pathway.
 
-4. Weekly digest. One email to the Lead Pastor covering Growth Track movement
-   (new members, active learners, milestones, who has gone quiet), intranet
-   activity (new accounts, wall posts, prayers, testimonies), giving (weekly
-   totals, first-time givers, new monthly partners), and what this job sent.
+3. Monday digest. One email to the Lead Pastor: Growth Track movement,
+   intranet activity, giving totals, first-time givers, new monthly partners,
+   and the personal touches that should not be automated — a text from the
+   pastor, a handwritten note.
 
 Env vars:
   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY   the database (required; the
@@ -34,11 +30,12 @@ Env vars:
   PCO_APP_ID, PCO_SECRET               Planning Center personal access token
                                        (absent = giving section skipped)
 Optional:
-  DIGEST_TO     where the weekly digest goes (default dontebee@gmail.com)
-  NUDGE_FROM    From header (default "Pastor Donte <hello@godchasers.church>")
-  REPLY_TO      Reply-To on every send (default hello@godchasers.church)
+  DIGEST_TO     where the digest goes, and the only address this job will
+                send to (default dontebee@gmail.com)
+  NUDGE_FROM    From header on the digest
+  REPLY_TO      Reply-To on the digest
   DRY_RUN       "1" to print instead of send
-  MAX_EMAILS    cap on member and giver emails per run (default 30)
+  MAX_EMAILS    cap on sends per run (default 30)
 """
 import html
 import json
@@ -61,11 +58,8 @@ NOW = datetime.now(timezone.utc)
 WEEK_AGO = NOW - timedelta(days=7)
 CELEBRATE_WINDOW_DAYS = 10   # only celebrate milestones reached this recently
 FIRST_GIFT_WINDOW_DAYS = 14  # a "first gift" counts as new for this long
-PATHWAY_CATCHUP_DAYS = 14    # how late a pathway step may still be sent
-MONTHLY_NUDGE_COOLDOWN_DAYS = 60
 STALLED_AFTER_DAYS = 14
 
-GIVING_URL = "https://godchasers.churchcenter.com/giving?frequency=monthly"
 
 SUPABASE_URL = gc3_env.supabase_url()
 SERVICE_KEY = gc3_env.service_key()
@@ -79,12 +73,6 @@ DIGEST_TO = (os.environ.get("DIGEST_TO") or "dontebee@gmail.com").strip()
 NUDGE_FROM = (os.environ.get("NUDGE_FROM") or "Pastor Donte <hello@godchasers.church>").strip()
 REPLY_TO = (os.environ.get("REPLY_TO") or "hello@godchasers.church").strip()
 DRY_RUN = os.environ.get("DRY_RUN", "").strip() in ("1", "true", "yes")
-# Lets the celebrations and the first-gift pathway keep running while the
-# monthly invitation is paused. Without this the only way to stop the nudge
-# is to disable the whole workflow, which also silences Growth Track
-# milestones and welcomes for new givers — people who are mid-pathway and
-# should not go quiet because a different pathway is under review.
-SKIP_MONTHLY_NUDGE = os.environ.get("SKIP_MONTHLY_NUDGE", "").strip() in ("1", "true", "yes")
 MAX_EMAILS = int(os.environ.get("MAX_EMAILS", "30"))
 
 if not RESEND_API_KEY and not DRY_RUN:
@@ -161,121 +149,21 @@ def parse_ts(s):
         return None
 
 
-_pathway_active_cache = None
-_pathway_rules_cache = None
-
-
-def pathway_rules(key):
-    """The editable rules for a pathway, from pathway_rules.
-
-    Thresholds used to be hardcoded. The monthly invitation was one line —
-    two or more gifts in ninety days, no recurring schedule — with no upper
-    bound, so it invited a twice-a-week giver to try giving monthly, and no
-    staff exclusion, so six of the team got fundraising mail. Changing that
-    needed a deploy. Now PD changes it on the admin page.
-
-    Returns None when there is no row, and callers treat that as "do not
-    send" — same fail-closed posture as the switch.
-    """
-    global _pathway_rules_cache
-    if _pathway_rules_cache is None:
-        try:
-            rows = fetch_all(
-                "pathway_rules",
-                "pathway,window_days,min_events,max_events,min_amount_cents,"
-                "max_amount_cents,exclude_staff,exclude_recurring,cooldown_days,"
-                "max_per_run,require_review")
-            _pathway_rules_cache = {r["pathway"]: r for r in rows}
-        except Exception as e:
-            print(f"  WARNING: could not read pathway_rules ({e}); sending nothing.")
-            _pathway_rules_cache = {}
-    return _pathway_rules_cache.get(key)
-
-
-def staff_emails():
-    """Anyone holding an unexpired role. Excluded from asks by default —
-    the team should not receive the house's fundraising mail."""
-    try:
-        rows = fetch_all("user_roles", "user_id,expires_at")
-        now = NOW.isoformat()
-        ids = {r["user_id"] for r in rows
-               if not r.get("expires_at") or r["expires_at"] > now}
-        return {em.lower() for uid, em in auth_emails().items() if uid in ids}
-    except Exception as e:
-        print(f"  WARNING: staff lookup failed ({e}); excluding nobody.")
-        return set()
-
-
-def pathway_active(key):
-    """Is this pathway switched on at /admin/pathways?
-
-    The intranet keeps one on/off switch per pathway, and on 2026-08-05 every
-    one of them was off — yet this job sent 30 monthly invitations, because it
-    had never heard of the switch. A kill switch that governs only half the
-    senders is not a kill switch.
-
-    Fails CLOSED. An unknown pathway, a missing row, or a database that will
-    not answer all mean "do not send". The cost of staying quiet for a day is
-    a day; the cost of sending is unrecallable.
-
-    """
-    global _pathway_active_cache
-    if _pathway_active_cache is None:
-        try:
-            rows = fetch_all("pathway_settings", "pathway,active")
-            _pathway_active_cache = {r["pathway"]: bool(r.get("active")) for r in rows}
-        except Exception as e:
-            print(f"  WARNING: could not read pathway_settings ({e}); sending nothing.")
-            _pathway_active_cache = {}
-    if not _pathway_active_cache.get("__all__", False):
-        return False
-    return _pathway_active_cache.get(key, False)
-
-
-def load_suppression():
-    """The one list that says who this house does not email.
-
-    It lives in email_recipients, written by the intranet's Pathways engine.
-    This job used to check only gt_profiles.email_optout, which meant someone
-    who unsubscribed from a pathway kept receiving these — the unsubscribe
-    worked in one system and was invisible to the other. Same rules as
-    guardrails.ts: unsubscribed, complained, or bounced twice.
-    """
-    suppressed, tokens = set(), {}
-    for r in fetch_all("email_recipients", "email,token,unsubscribed_at,bounce_count,complained"):
-        em = (r.get("email") or "").strip().lower()
-        if not em:
-            continue
-        tokens[em] = r.get("token")
-        if r.get("unsubscribed_at") or r.get("complained") or (r.get("bounce_count") or 0) >= 2:
-            suppressed.add(em)
-    return suppressed, tokens
-
-
-def unsubscribe_url(to, tokens):
-    """The recipient's own unsubscribe link, minted if they are new.
-
-    Every letter carries one. An email from a church asking for money with no
-    way out is the kind of thing that costs a domain its reputation, and more
-    to the point it is not how you treat people.
-    """
-    em = (to or "").strip().lower()
-    if not em:
-        return None
-    tok = tokens.get(em)
-    if not tok:
-        try:
-            res = sb.table("email_recipients").upsert(
-                {"email": em}, on_conflict="email").execute()
-            tok = ((res.data or [{}])[0] or {}).get("token")
-        except Exception as e:
-            print(f"  WARNING: could not mint unsubscribe token for {em}: {e}")
-        tokens[em] = tok
-    return f"https://mygc3.church/unsubscribe?t={tok}" if tok else None
-
-
 def send_email(to, subject, html_body, kind, capped=True, unsub=None):
-    """Send through Resend, honoring DRY_RUN and the per-run cap."""
+    """Send through Resend, honouring DRY_RUN and the per-run cap.
+
+    There is exactly one caller: the Monday digest, addressed to DIGEST_TO.
+    Nothing in this repo emails a member — that is the Pathways engine's job,
+    where the switch, the shared suppression list and unsubscribe live.
+
+    If you are about to add a second caller, read CLAUDE.md first. A second
+    sender in this repo is what put 30 monthly-partner invitations in front of
+    people on 2026-08-05 while every Pathway was switched off.
+    """
+    if to != DIGEST_TO:
+        # Belt and braces. The rule above is a paragraph; this is a guard.
+        print(f"  REFUSED: {kind} -> {to}. This repo only emails DIGEST_TO.")
+        return False
     if capped and len(emails_sent) >= MAX_EMAILS:
         print(f"  SKIP (cap of {MAX_EMAILS} reached): {kind} -> {to}")
         return False
@@ -305,39 +193,6 @@ def send_email(to, subject, html_body, kind, capped=True, unsub=None):
     print(f"  FAILED {kind} -> {to}: HTTP {r.status_code} {r.text[:200]}")
     send_failures.append((kind, to, r.status_code))
     return False
-
-
-def letter(first_name, paragraphs, cta=None, unsub=None):
-    """A short personal note styled as a letter from Pastor Donte."""
-    name = html.escape(first_name or "friend")
-    body = "".join(
-        f'<p style="margin:0 0 14px;font-size:16px;line-height:1.6;color:#222;">{p}</p>'
-        for p in paragraphs
-    )
-    button = ""
-    if cta:
-        label, url = cta
-        button = (f'<p style="margin:20px 0;"><a href="{url}" '
-                  f'style="background:#1a56db;color:#fff;text-decoration:none;'
-                  f'padding:11px 22px;border-radius:6px;font-size:15px;">{label}</a></p>')
-    return (
-        '<div style="max-width:560px;margin:0 auto;padding:28px 24px;'
-        'font-family:Georgia,serif;">'
-        f'<p style="margin:0 0 14px;font-size:16px;line-height:1.6;color:#222;">{name},</p>'
-        f"{body}{button}"
-        '<p style="margin:22px 0 0;font-size:16px;line-height:1.6;color:#222;">'
-        "With you and for you,<br>Pastor Donte<br>"
-        '<span style="color:#777;font-size:14px;">GodChasers Church</span></p>'
-        + (
-            '<p style="margin:26px 0 0;padding-top:14px;border-top:1px solid #ececec;'
-            'font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.5;color:#9aa0a6;">'
-            "GodChasers Church &middot; San Antonio, TX<br>"
-            f'Don\'t want these notes? <a href="{html.escape(unsub, quote=True)}" '
-            'style="color:#9aa0a6;">Unsubscribe</a>.</p>'
-            if unsub else ""
-        )
-        + "</div>"
-    )
 
 
 # ---------------------------------------------------------------- growth track
@@ -379,7 +234,6 @@ def growth_track():
 
     celebrate_cutoff = NOW - timedelta(days=CELEBRATE_WINDOW_DAYS)
     milestones, active, celebrated = [], [], []
-    gt_suppressed, gt_tokens = load_suppression()
 
     for uid, done in per_user.items():
         done_keys = set(done) & all_keys
@@ -400,33 +254,13 @@ def growth_track():
         for kind, label, latest in reached:
             if (uid, kind) in already or not latest or latest < celebrate_cutoff:
                 continue
-            full, first = display(uid)
+            full, _first = display(uid)
             milestones.append((full, label))
-            prof = gt_profiles.get(uid, {})
-            to = emails.get(str(uid))
-            if prof.get("email_optout") or not to:
-                continue
-            if kind == "celebrate_course":
-                paras = [
-                    "You did it. You finished the entire Growth Track, and I could not be more proud of you.",
-                    "This was never about checking boxes. It was about you discovering who God made you to be and where you fit in His house. You leaned in, and it shows.",
-                    "Your next step is simple: get planted on a team and in a tribe. I would love to help you find the right spot, so just reply to this email.",
-                ]
-                subject = "You finished Growth Track. I'm proud of you."
-            else:
-                paras = [
-                    f"You finished the {html.escape(label)} phase of Growth Track, and that deserves to be said out loud: well done.",
-                    "Every lesson you finish is a step deeper into who God is calling you to be. Keep going, the next phase is ready when you are.",
-                    "If anything in this phase raised questions, reply to this email. I read these.",
-                ]
-                subject = f"You finished {label}. Keep going!"
-            if to.lower() in gt_suppressed or not pathway_active("growth_track_celebrations"):
-                continue
-            unsub = unsubscribe_url(to, gt_tokens)
-            if send_email(to, subject, letter(first, paras, None, unsub), kind, unsub=unsub):
-                celebrated.append((full, label))
-                if not DRY_RUN:
-                    sb.table("gt_email_log").insert({"user_id": uid, "kind": kind}).execute()
+            # Milestones are collected for the digest only. The congratulation
+            # itself is the growth_track_celebrations / growth_track_complete
+            # Pathway in gc3-intranet, which has the switch, the shared
+            # suppression list and an unsubscribe. This repo does not email
+            # members. See CLAUDE.md.
 
     stalled = []
     stall_cutoff = NOW - timedelta(days=STALLED_AFTER_DAYS)
@@ -457,76 +291,6 @@ def growth_track():
         "total_learners": len(per_user),
     }
 
-
-# ---------------------------------------------------------------- giving
-
-# The 90 day generosity pathway for first-time givers. Each step fires once the
-# donor's first gift is at least `day` days old, and is skipped entirely if it
-# is more than PATHWAY_CATCHUP_DAYS late (so donors who gave long before this
-# automation existed never get stale touchpoints). One step per donor per run.
-PATHWAY_STEPS = [
-    {
-        "kind": "first_gift", "day": 0,
-        "subject": "You just did something most people never do",
-        "paras": [
-            "I don't want to let this moment pass without telling you how much it means. "
-            "You just gave to GodChasers Church for the first time, and I want to personally "
-            "say thank you. Not just on behalf of our church family, but as your pastor.",
-            "Here is what I know about this moment: this was not just a transaction, it was a "
-            "declaration. By taking this step you declared that you are putting God first, and "
-            "that your heart is moving toward something bigger than yourself. Jesus said it "
-            "plainly: where your treasure goes, your heart follows. You just moved your heart.",
-            "And because of your faithfulness, families in our community are going to be served, "
-            "people searching for hope are going to find it, and real lives are going to change. "
-            "That is not church talk. That is what your generosity actually does.",
-            "So as your pastor, I am proud of you. This is a big moment, and I wanted to "
-            "celebrate it with you. God is not done with what He has started in you.",
-            '<i>P.S. Keep an eye on your mailbox. I am sending you something personally.</i>',
-        ],
-    },
-    {
-        "kind": "first_gift_d5", "day": 5,
-        "subject": "The story your generosity is writing",
-        "paras": [
-            "A few days ago you gave to GodChasers Church for the first time, and I have been "
-            "thinking about it since. I wanted you to see what you are now part of.",
-            "Every week, people walk through our doors carrying things nobody can see: grief, "
-            "questions, empty tanks. And every week, because people like you sow into this "
-            "house, they meet a God who sees them. Your gift is already in that story.",
-            "If there is anything I can be praying about for you, reply to this email. "
-            "I read these myself.",
-        ],
-    },
-    {
-        "kind": "first_gift_d30", "day": 30,
-        "subject": "One month ago you took a step",
-        "paras": [
-            "One month ago you gave to GodChasers Church for the first time. I told you then "
-            "that it was a declaration, and I meant it. Today I want to invite you into a rhythm.",
-            "The people who grow the most in generosity are not the ones who give the biggest "
-            "gifts. They are the ones who give consistently. Would you pray about becoming a "
-            "monthly partner? It takes about a minute to set up, and it turns a moment of "
-            "obedience into a lifestyle of faith.",
-            "No pressure and no obligation. If it is not your season, that is okay. "
-            "But if God nudges you, I would love for you to follow it.",
-        ],
-        "cta": ("Become a monthly partner", GIVING_URL),
-    },
-    {
-        "kind": "first_gift_d90", "day": 90,
-        "subject": "90 days ago something shifted",
-        "paras": [
-            "Ninety days ago you gave your first gift to GodChasers Church. I do not know if "
-            "you have thought about it since, but I have. That day something shifted in you, "
-            "and I have watched God honor it.",
-            "Thank you for being part of this house. Not just for what you have given, but for "
-            "who you are becoming. I am praying that the next ninety days hold more of God's "
-            "presence, more open doors, and more of the purpose He wrote on your life.",
-            "If you ever want to talk, pray, or find your place on a team, my inbox is open. "
-            "Just reply.",
-        ],
-    },
-]
 
 PCO_BASE = "https://api.planningcenteronline.com"
 
@@ -622,49 +386,56 @@ def recurring_person_ids():
         offset += 100
 
 
-def donor_email(pid, cache):
-    """Look up a donor's primary email in PCO People, at most once per run."""
-    if pid in cache:
-        return cache[pid]
-    email = None
-    try:
-        data = pco_get(f"/people/v2/people/{pid}/emails")
-        rows = data.get("data", [])
-        primary = [r for r in rows if r.get("attributes", {}).get("primary")]
-        pick = (primary or rows)
-        if pick:
-            email = pick[0]["attributes"].get("address")
-    except Exception as e:
-        print(f"  WARNING: email lookup failed for person {pid}: {e}")
-    cache[pid] = email
-    if email:
-        sb.table("giving_gifts").update({"donor_email": email}).eq("pco_person_id", pid).execute()
-    return email
+def donor_identity(pid, cache):
+    """A donor's first name and email from PCO People, in ONE request.
 
+    Planning Center Giving hands back a person id and nothing else — no name,
+    no address — and the Pathways engine enrols first_gift and monthly_partner
+    straight off giving_gifts. Those two columns are the whole reason this
+    function exists; without them the pathways reach nobody and any letter
+    that did go out would open "friend,".
 
-def donor_first_name(pid, cache):
-    """A donor's first name, from PCO People.
+    `include=emails` returns the person and their addresses together, so this
+    costs one call per donor rather than two. With thousands of donors to
+    backfill, halving the calls is the difference between finishing and
+    spending the run inside PCO's rate limiter.
 
-    Giving does not carry names. Its donation payload sideloads only the
-    person's id, so `include=person` on /giving/v2/donations leaves the name
-    empty — which is why every letter opened "friend," until this existed.
-    Names live in People, the same place the email lookup already goes.
+    Writes both columns back, so a donor is looked up once ever rather than
+    once per run.
     """
     if pid in cache:
         return cache[pid]
-    name = None
+    first, email, full = None, None, None
     try:
-        data = pco_get(f"/people/v2/people/{pid}")
+        data = pco_get(f"/people/v2/people/{pid}", {"include": "emails"})
         attrs = (data.get("data") or {}).get("attributes", {})
         # nickname first: it is what the person actually answers to.
-        name = (attrs.get("nickname") or attrs.get("first_name") or "").strip() or None
-        full = " ".join(x for x in (attrs.get("first_name"), attrs.get("last_name")) if x)
-        if full:
-            sb.table("giving_gifts").update({"donor_name": full}).eq("pco_person_id", pid).execute()
+        first = (attrs.get("nickname") or attrs.get("first_name") or "").strip() or None
+        full = " ".join(x for x in (attrs.get("first_name"), attrs.get("last_name")) if x) or None
+        rows = [i for i in data.get("included", []) if i.get("type") == "Email"]
+        primary = [r for r in rows if r.get("attributes", {}).get("primary")]
+        pick = primary or rows
+        if pick:
+            email = pick[0]["attributes"].get("address")
     except Exception as e:
-        print(f"  WARNING: name lookup failed for person {pid}: {e}")
-    cache[pid] = name
-    return name
+        print(f"  WARNING: identity lookup failed for person {pid}: {e}")
+
+    patch = {}
+    if full:
+        patch["donor_name"] = full
+    if email:
+        patch["donor_email"] = email
+    if patch:
+        try:
+            sb.table("giving_gifts").update(patch).eq("pco_person_id", pid).execute()
+        except Exception as e:
+            print(f"  WARNING: could not save identity for person {pid}: {e}")
+
+    cache[pid] = (first, email)
+    return cache[pid]
+
+
+
 
 
 def donor_phone(pid):
@@ -688,13 +459,9 @@ def giving():
         return {"connected": False}
 
     sync_gifts()
-    recurring_ids, new_recurring = recurring_person_ids()
+    _recurring_ids, new_recurring = recurring_person_ids()
     gifts = fetch_all("giving_gifts", "pco_person_id,donor_name,donor_email,amount_cents,received_at,recurring")
     nudge_log = fetch_all("giving_nudge_log", "donor_key,kind,sent_on")
-
-    def last_sent(key, kind):
-        dates = [r["sent_on"] for r in nudge_log if r["donor_key"] == key and r["kind"] == kind]
-        return max(dates) if dates else None
 
     donors = {}
     for g in gifts:
@@ -703,11 +470,13 @@ def giving():
             continue
         donors.setdefault(key, []).append(g)
 
-    email_cache = {}
-    name_cache = {}
+    identity_cache = {}
+    # A list so the loop below can decrement it. Roughly 350 PCO calls keeps a
+    # run comfortably inside its window even when every donor needs looking up;
+    # raise it with BACKFILL_PER_RUN once the backlog is cleared.
+    backfill_budget = [int(os.environ.get("BACKFILL_PER_RUN", "350"))]
     first_cutoff = NOW - timedelta(days=FIRST_GIFT_WINDOW_DAYS)
     ninety = NOW - timedelta(days=90)
-    pathway_span = max(s["day"] for s in PATHWAY_STEPS) + PATHWAY_CATCHUP_DAYS
     first_timers, nudged, touches = [], [], []
     run_welcomed = set()
 
@@ -718,107 +487,41 @@ def giving():
     week_count = len(week_gifts)
     week_total = sum(g.get("amount_cents") or 0 for g in week_gifts)
 
-    # Two opt-out sources, one set: the Growth Track flag and the intranet's
-    # shared suppression list. An unsubscribe anywhere has to mean everywhere.
-    optout_emails, unsub_tokens = load_suppression()
-    staff = staff_emails()
-    gt_profiles = {p["id"]: p for p in fetch_all("gt_profiles", "id,email_optout")}
-    for uid, em in auth_emails().items():
-        if gt_profiles.get(uid, {}).get("email_optout"):
-            optout_emails.add(em.lower())
+    def _latest(pair):
+        ts = [t for t in (parse_ts(d.get("received_at")) for d in pair[1]) if t]
+        return max(ts) if ts else datetime.min.replace(tzinfo=timezone.utc)
 
-    for key, ds in donors.items():
+    for key, ds in sorted(donors.items(), key=_latest, reverse=True):
         times = sorted(t for t in (parse_ts(d["received_at"]) for d in ds) if t)
         if not times:
             continue
         name = next((d["donor_name"] for d in ds if d.get("donor_name")), None)
         pid = ds[0].get("pco_person_id")
-        # Only ask People for a name when the synced rows do not have one.
-        # Cached, so a donor costs one lookup per run no matter how many gifts.
-        if not name and pid:
-            name = donor_first_name(pid, name_cache)
-        first = (name or "friend").split(" ")[0]
         to = next((d.get("donor_email") for d in ds if d.get("donor_email")), None)
 
-        # 90 day generosity pathway: fires while the first gift is fresh enough.
-        days_since_first = (NOW - times[0]).days
+        # Backfill name and email from PCO People onto the gift rows.
+        #
+        # This is the point of this loop now. Giving returns a person id but
+        # never a name or an address, and the Pathways engine enrols the
+        # first-gift and monthly-partner pathways straight off giving_gifts —
+        # so if these columns stay empty, those pathways reach nobody and any
+        # letter that did go out would open "friend,".
+        #
+        # Budgeted, because there are thousands of donors to catch up on and
+        # PCO rate-limits hard. Donors are walked newest gift first, so the
+        # people a pathway might actually reach are filled in first and the
+        # long tail catches up over subsequent runs.
+        if pid and (not name or not to) and backfill_budget[0] > 0:
+            backfill_budget[0] -= 1
+            got_name, got_email = donor_identity(pid, identity_cache)
+            name = name or got_name
+            to = to or got_email
+
+        # Both the first-gift welcome and the monthly invitation are Pathways
+        # now, enrolled and sent by gc3-intranet from this same table. Nothing
+        # is emailed from here; what follows only feeds the digest.
         if times[0] >= first_cutoff:
             first_timers.append(name)
-        if days_since_first <= pathway_span:
-            step = next(
-                (s for s in PATHWAY_STEPS
-                 if s["day"] <= days_since_first <= s["day"] + PATHWAY_CATCHUP_DAYS
-                 and not last_sent(key, s["kind"])),
-                None)
-            # first_gift also exists as a pathway in the intranet engine. One
-            # switch governs both, so activating it there cannot accidentally
-            # produce two welcomes from two systems.
-            if step and pathway_active("first_gift"):
-                if not to and pid:
-                    to = donor_email(pid, email_cache)
-                if to and to.lower() not in optout_emails:
-                    unsub = unsubscribe_url(to, unsub_tokens)
-                    if send_email(to, step["subject"],
-                                  letter(first, step["paras"], step.get("cta"), unsub),
-                                  step["kind"], unsub=unsub):
-                        if step["kind"] == "first_gift":
-                            run_welcomed.add(key)
-                        if not DRY_RUN:
-                            sb.table("giving_nudge_log").upsert(
-                                {"donor_key": key, "kind": step["kind"]},
-                                on_conflict="donor_key,kind,sent_on").execute()
-            continue  # donors inside the pathway never get the generic nudge
-
-        # Monthly invitation. Every threshold below is editable on the admin
-        # page; nothing here is a magic number any more.
-        rules = pathway_rules("monthly_partner")
-        if SKIP_MONTHLY_NUDGE or not pathway_active("monthly_partner") or not rules:
-            continue
-        window = NOW - timedelta(days=rules.get("window_days") or 90)
-        recent = [t for t in times if t >= window]
-        given = sum(d.get("amount_cents") or 0 for d in ds
-                    if (pt := parse_ts(d.get("received_at"))) and pt >= window)
-
-        in_range = len(recent) >= (rules.get("min_events") or 0)
-        # The bound that was missing: someone giving twice a week has already
-        # answered this question, and asking again reads as not paying attention.
-        if rules.get("max_events") is not None and len(recent) > rules["max_events"]:
-            in_range = False
-        if rules.get("min_amount_cents") is not None and given < rules["min_amount_cents"]:
-            in_range = False
-        if rules.get("max_amount_cents") is not None and given > rules["max_amount_cents"]:
-            in_range = False
-        if rules.get("exclude_recurring") and pid in recurring_ids:
-            in_range = False
-
-        if in_range:
-            last = last_sent(key, "monthly_nudge")
-            cooldown = rules.get("cooldown_days") or MONTHLY_NUDGE_COOLDOWN_DAYS
-            if last and (NOW.date() - datetime.fromisoformat(last).date()).days < cooldown:
-                continue
-            if not to and pid:
-                to = donor_email(pid, email_cache)
-            if to and rules.get("exclude_staff") and to.lower() in staff:
-                print(f"  SKIP (staff): monthly_nudge -> {to}")
-                continue
-            if to and to.lower() not in optout_emails:
-                # House style: God does the seeing, not the pastor. The first
-                # version of this opened "I have noticed your faithfulness in
-                # giving", which reads as a man reviewing giving records.
-                paras = [
-                    "Steady generosity is a quiet thing. It rarely gets noticed, and it does not need to be. God is not forgetful about what is done without announcement.",
-                    "Some people find it simpler to give on a rhythm than to decide again every time. Not more, just settled. If that is your season, it takes about a minute.",
-                    '<span style="color:#5f6368;font-style:italic;">"God is not unrighteous to forget your work and labour of love." &mdash; Hebrews 6:10</span>',
-                ]
-                unsub = unsubscribe_url(to, unsub_tokens)
-                if send_email(to, "Would you pray about becoming a monthly partner?",
-                              letter(first, paras, ("Set up monthly giving", GIVING_URL), unsub),
-                              "monthly_nudge", unsub=unsub):
-                    nudged.append(name)
-                    if not DRY_RUN:
-                        sb.table("giving_nudge_log").upsert(
-                            {"donor_key": key, "kind": "monthly_nudge"},
-                            on_conflict="donor_key,kind,sent_on").execute()
 
     # Personal-touch prompts for the digest: everyone welcomed into the pathway
     # in the last 7 days (any run), with a phone number when PCO has one.
