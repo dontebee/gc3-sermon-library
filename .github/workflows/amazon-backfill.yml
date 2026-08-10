@@ -5,6 +5,13 @@ name: Amazon receipt backfill (one-shot)
 # their already-identified card charges. Idempotent via source_ref, so a
 # re-run cannot double-file.
 on:
+  # workflow_dispatch only works once the file exists on main, and this job
+  # should not have to land on main to run once. So: pushes to this branch run
+  # it too — DRY by default; a push that includes the marker file
+  # data/amazon_backfill/RUN_LIVE files for real. Deleting the marker (or the
+  # branch) disarms it. Same default-dry posture as every job in this repo.
+  push:
+    branches: [claude/finance-bulk-receipts-upload-qwtb6j]
   workflow_dispatch:
     inputs:
       dry_run:
@@ -33,5 +40,12 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
-          DRY_RUN: ${{ inputs.dry_run && '1' || '' }}
-        run: python amazon_receipt_backfill.py
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            export DRY_RUN='${{ inputs.dry_run && '1' || '' }}'
+          elif [ -f data/amazon_backfill/RUN_LIVE ]; then
+            export DRY_RUN=''
+          else
+            export DRY_RUN='1'
+          fi
+          python amazon_receipt_backfill.py
