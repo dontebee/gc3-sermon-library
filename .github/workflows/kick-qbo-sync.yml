@@ -1,0 +1,30 @@
+name: Kick QuickBooks sync (one-shot)
+
+# Runs the intranet's QuickBooks sync on demand from a runner with open
+# egress. Exists because the attachment-awareness pass (gc3-intranet #80)
+# should run now, not at tonight's cron. Triggers only when this file
+# itself changes, or by hand.
+on:
+  push:
+    branches: [claude/finance-bulk-receipts-upload-qwtb6j]
+    paths: ['.github/workflows/kick-qbo-sync.yml']
+  workflow_dispatch:
+
+jobs:
+  kick:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for the Vercel deploy, then run the sync
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$CRON_SECRET" ]; then
+            echo "CRON_SECRET is not in this repo's Actions secrets — trigger the sync from Finance → QuickBooks → Sync now instead."
+            exit 0
+          fi
+          echo "Waiting 4 minutes for the production deploy..."
+          sleep 240
+          echo "Running sync:"
+          curl -sS -m 280 -H "Authorization: Bearer $CRON_SECRET" \
+            https://intranet.godchasers.church/api/qbo/sync | head -c 2000
+          echo
