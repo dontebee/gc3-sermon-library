@@ -1,0 +1,51 @@
+name: Amazon receipt backfill (one-shot)
+
+# No schedule on purpose: this is a hand-run, one-time job. It attaches the
+# bulk-downloaded Amazon Business order summaries (data/amazon_backfill/) to
+# their already-identified card charges. Idempotent via source_ref, so a
+# re-run cannot double-file.
+on:
+  # workflow_dispatch only works once the file exists on main, and this job
+  # should not have to land on main to run once. So: pushes to this branch run
+  # it too — DRY by default; a push that includes the marker file
+  # data/amazon_backfill/RUN_LIVE files for real. Deleting the marker (or the
+  # branch) disarms it. Same default-dry posture as every job in this repo.
+  push:
+    branches: [claude/finance-bulk-receipts-upload-qwtb6j]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        # Defaults ON for manual runs, same as every job in this repo —
+        # untick it deliberately to write for real.
+        description: 'Dry run (print the plan instead of filing). Untick to file for real.'
+        type: boolean
+        default: true
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: File receipts
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            export DRY_RUN='${{ inputs.dry_run && '1' || '' }}'
+          elif [ -f data/amazon_backfill/RUN_LIVE ]; then
+            export DRY_RUN=''
+          else
+            export DRY_RUN='1'
+          fi
+          python amazon_receipt_backfill.py
