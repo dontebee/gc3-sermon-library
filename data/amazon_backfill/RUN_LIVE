@@ -1,2 +1,0 @@
-Marker file: its presence makes push-triggered runs of amazon-backfill.yml
-file receipts for real instead of dry-running. Delete to disarm.
