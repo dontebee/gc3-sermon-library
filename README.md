@@ -15,6 +15,11 @@ and added automatically.
 - `meta_ads_report.py` : weekly Meta ads performance pull and analysis
   (read-only), feeding the Monday digest. Run by
   `.github/workflows/meta_ads.yml`.
+- `meta_ads_history.py` : one-time era diagnostic, monthly ad history laid
+  out before and after the agency switch. Run by hand from
+  `.github/workflows/meta_history.yml`.
+- `meta_api.py` : the Graph API client (token, retries, pagination) shared
+  by both ads jobs.
 
 ## Engagement nudges and weekly digest
 
@@ -113,6 +118,20 @@ Thresholds (fatigue frequency, click-rate floors, cost-spike percent, minimum
 impressions before judging) are named constants at the top of
 `meta_ads_report.py`. The `RESULT_PRIORITY` list decides which Meta action
 counts as an ad's "result"; tune it as campaign objectives change.
+
+### The history diagnostic (run once, read forever)
+
+The ads ran in our own ad account through the Church Candy era, and Meta
+keeps about 37 months of insights. `meta_ads_history.py` (Actions tab >
+"Meta ads history diagnostic" > Run workflow) pulls monthly campaign-level
+history and renders it as a report: spend, leads, and cost per lead by
+month, which objectives the money bought in each era, and the top campaigns
+by leads produced. Give it the agency handoff date and it adds a before and
+after comparison. Read-only, writes nothing; the report lands in the Action
+log and as a downloadable workflow artifact. Its purpose is to answer, with
+the account's own data, why lead volume fell after the switch, and to name
+the campaign structures worth asking the new agency to reproduce. See
+`docs/visit-module-plan.md` for the plan this feeds.
 
 ## Filtering rules (weekly job)
 

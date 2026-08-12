@@ -1,7 +1,8 @@
 # GC3 Visit Module: filling and owning the funnel
 
-*A plan, not code. Nothing in this document is built yet. It maps what we are
-building, where each piece lives, and in what order.*
+*Status: the weekly ads scoreboard (`meta_ads_report.py`) and the era
+diagnostic (`meta_ads_history.py`) are built and sit in PR #7 waiting on
+the two META_ secrets. Everything else here is planned, not built.*
 
 ## The situation, stated plainly
 
@@ -50,11 +51,10 @@ The likely causes of the drop, most probable first:
    or engagement objectives, or sending clicks to a page with a form on it,
    volume falls off a cliff even at identical spend.
 2. **The Meta-to-ChurchFunnels connection may have broken at handoff.**
-   GoHighLevel ingests Facebook leads through a per-location Facebook
-   integration tied to a Page and its forms. If Church Candy configured
-   that connection through their access, the switch could have severed it:
-   leads may be arriving at Meta and never reaching ChurchFunnels at all.
-   This one is cheap to check and would be invisible from the ad reports.
+   Checked with PD: new Facebook leads still land in ChurchFunnels today,
+   just not many. The pipe is alive; the drop is upstream, in what the ads
+   are buying. This cause is downgraded, which concentrates the diagnosis
+   on the causes above and below.
 3. **Spend and campaign mix.** Same dollars split across more objectives
    (video views, brand awareness) means fewer dollars buying leads.
 4. **Creative style.** The personal-invite look (real faces, phone-shot
@@ -74,17 +74,18 @@ that, the cause is on the list above.
    for the last 18 to 24 months and mark the agency transition. That is the
    ground-truth volume curve, and it tells us the size of the gap we are
    closing.
-2. **Ad account history.** If Church Candy ran ads in OUR ad account (check
-   Business Manager), Meta retains 37 months of insights. A one-time pull
-   of monthly campaign-level history, era-tagged, shows exactly what
-   changed: objectives, spend, cost per lead, which campaigns used instant
-   forms. This is a small script away, using the same API access the weekly
-   ads report already needs. If the old ads ran in Church Candy's account,
-   we skip this and lean on the ChurchFunnels timeline.
-3. **The lead-flow audit.** Submit a test lead through the current ad's
-   form. Does it land in ChurchFunnels? In minutes or days? Does it enter
-   the workflow? Whose Business Manager owns the Page and the lead forms,
-   and does our ChurchFunnels location hold a live Facebook integration?
+2. **Ad account history.** Confirmed: the Church Candy era ads ran in OUR
+   ad account, so Meta's roughly 37 months of insights cover both eras.
+   **Built:** `meta_ads_history.py` (Actions tab > Meta ads history
+   diagnostic) pulls monthly campaign history and renders spend, leads,
+   cost per lead, and objective mix by era; give it the handoff date and it
+   compares before and after directly. It needs only the same two META_
+   secrets as the weekly report.
+3. **The lead-flow audit.** Confirmed with PD: leads still arrive in
+   ChurchFunnels, at low volume. Remaining check, worth five minutes: is
+   the arriving trickle everything Meta captures, or a subset? The
+   history report's monthly lead counts against ChurchFunnels' contact
+   timeline settles it.
 4. **What is Creative Church Marketing actually running?** The weekly ads
    report built in this repo already answers this from the API: objectives,
    spend, results by type. Its first live run is the audit.
@@ -298,10 +299,10 @@ client, the same credentials, and the same rate-limit handling.
 
 ## What this needs from PD (decisions, not work)
 
-1. Confirm where the Church Candy era ads ran: our ad account or theirs.
-   (Business Manager > Ad accounts shows the history.)
-2. Confirm ChurchFunnels still receives new Facebook leads today, or say
-   the word and the lead-flow audit becomes the first build task.
+1. ~~Confirm where the Church Candy era ads ran.~~ Answered: ours, no
+   doubt. The history diagnostic is built on the strength of it.
+2. ~~Confirm ChurchFunnels still receives new Facebook leads.~~ Answered:
+   yes, but not a lot. The pipe is alive; the diagnosis moves upstream.
 3. How the 36 FTGs got recorded: Check-Ins, connect cards, People entries,
    or a headcount. If they are in Planning Center in any form, Phase 3
    reads them as is; if they are on paper, the fix is getting them entered

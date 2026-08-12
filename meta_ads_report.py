@@ -43,21 +43,16 @@ import json
 import os
 import statistics
 import sys
-import time
 from datetime import datetime, timedelta, timezone
 
-import requests
-
 import gc3_env
+from meta_api import AD_ACCOUNT, account_info, connected, meta_get_all
 
 # Ad names can carry emoji, same as sermon titles. Keep stdout UTF-8 safe.
 try:
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 except Exception:
     pass
-
-META_API_VERSION = "v23.0"
-GRAPH = f"https://graph.facebook.com/{META_API_VERSION}"
 
 LOOKBACK_DAYS = 28               # daily history window refreshed each run
 MIN_IMPRESSIONS_TO_JUDGE = 1000  # below this a week is noise, not signal
@@ -83,9 +78,6 @@ RESULT_PRIORITY = [
 
 SUPABASE_URL = gc3_env.supabase_url()
 SERVICE_KEY = gc3_env.service_key()
-META_TOKEN = (os.environ.get("META_ACCESS_TOKEN") or "").strip()
-_raw_acct = (os.environ.get("META_AD_ACCOUNT_ID") or "").strip()
-AD_ACCOUNT = _raw_acct if _raw_acct.startswith("act_") else (f"act_{_raw_acct}" if _raw_acct else "")
 ANTHROPIC_API_KEY = (os.environ.get("ANTHROPIC_API_KEY") or "").strip()
 DRY_RUN = os.environ.get("DRY_RUN", "").strip() in ("1", "true", "yes")
 
@@ -99,56 +91,8 @@ sb = create_client(SUPABASE_URL, SERVICE_KEY)
 
 
 # ---------------------------------------------------------------- graph api
-
-def meta_get(path_or_url, params=None):
-    """GET from the Graph API with retry on throttling and server errors.
-
-    Meta signals throttling as HTTP 400 with error codes 4, 17 or 32 rather
-    than a clean 429, so the retry decision reads the error body, not just the
-    status line. Code 190 is an invalid or expired token, which retrying will
-    never fix, so it gets an explanation and a hard stop instead.
-    """
-    url = path_or_url if path_or_url.startswith("http") else f"{GRAPH}/{path_or_url}"
-    p = dict(params or {})
-    if not path_or_url.startswith("http"):
-        # paging "next" URLs already carry the token; fresh paths need it added
-        p["access_token"] = META_TOKEN
-    for attempt in range(5):
-        r = requests.get(url, params=p, timeout=60)
-        if r.status_code == 200:
-            return r.json()
-        try:
-            err = (r.json() or {}).get("error", {})
-        except ValueError:
-            err = {}
-        code = err.get("code")
-        if code == 190:
-            print("ERROR: Meta rejected the access token (code 190: invalid or expired).")
-            print("User tokens expire about every 60 days. Generate a System User token")
-            print("with ads_read (business.facebook.com > Business settings > Users >")
-            print("System users) and update the META_ACCESS_TOKEN secret in Doppler.")
-            sys.exit(1)
-        retryable = r.status_code == 429 or r.status_code >= 500 or code in (1, 2, 4, 17, 32, 613)
-        if retryable and attempt < 4:
-            wait = min(60, 10 * (attempt + 1))
-            print(f"  Meta {r.status_code} (error code {code}), retrying in {wait}s...")
-            time.sleep(wait)
-            continue
-        print(f"ERROR: Meta API call failed: HTTP {r.status_code} {r.text[:300]}")
-        sys.exit(1)
-    return {}
-
-
-def meta_get_all(path, params):
-    """Follow Graph API pagination to the end."""
-    rows, data = [], meta_get(path, params)
-    while True:
-        rows.extend(data.get("data", []))
-        nxt = (data.get("paging") or {}).get("next")
-        if not nxt:
-            return rows
-        data = meta_get(nxt)
-
+# The client itself (retry policy, pagination, account check) lives in
+# meta_api.py, shared with the history diagnostic.
 
 INSIGHT_FIELDS = ",".join([
     "campaign_id", "campaign_name", "adset_id", "adset_name",
@@ -171,16 +115,6 @@ def fetch_insights(since, until, daily=False):
     if daily:
         params["time_increment"] = 1
     return meta_get_all(f"{AD_ACCOUNT}/insights", params)
-
-
-def account_info():
-    """Name, currency and status: confirms the token reaches the right account
-    before anything else runs, and fails with a clear message if not."""
-    d = meta_get(AD_ACCOUNT, {"fields": "name,currency,account_status"})
-    status = {1: "active", 2: "disabled", 3: "unsettled"}.get(
-        d.get("account_status"), str(d.get("account_status")))
-    print(f"Ad account: {d.get('name')} ({d.get('currency')}), status: {status}")
-    return d
 
 
 def ad_statuses():
@@ -483,7 +417,7 @@ def strategy_note(report, recs):
 def main():
     now = datetime.now(timezone.utc)
     print(f"Meta ads report starting ({'DRY RUN' if DRY_RUN else 'live'}), {now:%Y-%m-%d %H:%M} UTC")
-    if not (META_TOKEN and AD_ACCOUNT):
+    if not connected():
         print("Meta ads: not connected yet. To activate:")
         print("  1. Apply supabase/meta_ads_schema.sql in the Supabase SQL editor.")
         print("  2. Add a META_ACCESS_TOKEN secret: a System User token with ads_read")
