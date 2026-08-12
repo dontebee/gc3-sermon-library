@@ -1,0 +1,54 @@
+name: Meta ads performance report
+
+on:
+  schedule:
+    - cron: '30 12 * * 1'   # Mondays at 12:30 UTC, deliberately before the
+                            # 14:00 engagement run so the Monday digest picks
+                            # up fresh ad numbers and recommendations. Monday
+                            # order: 12:30 ads report, 13:00 sermon pull,
+                            # 14:00 engagement digest.
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        # Defaults ON for manual runs, same as the engagement job (see
+        # CLAUDE.md). This job is read-only against Meta either way; dry run
+        # additionally skips the Supabase writes, so a hand-triggered test
+        # leaves no trace in the tables the digest reads. Untick it
+        # deliberately to store results. The Monday schedule is unaffected:
+        # inputs do not apply to it, so scheduled runs stay live.
+        description: 'Dry run (fetch and analyze, write nothing). Untick to store results.'
+        type: boolean
+        default: true
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Pull and analyze Meta ads performance
+        env:
+          # Four spellings, two values, one Supabase project. gc3_env.py picks
+          # whichever is set, preferring the intranet's names, so Doppler only
+          # has to hold one of each.
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          # A System User token with ads_read; user tokens expire every 60
+          # days, system user tokens do not. Read-only by scope on purpose:
+          # this job never writes to the ad account.
+          META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
+          META_AD_ACCOUNT_ID: ${{ secrets.META_AD_ACCOUNT_ID }}
+          # Optional: adds the written strategy note on top of the rule-based
+          # flags. Same key the sermon enrichment already uses.
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          DRY_RUN: ${{ inputs.dry_run && '1' || '' }}
+        run: python meta_ads_report.py

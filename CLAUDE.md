@@ -23,6 +23,11 @@ What legitimately lives here:
 - syncing Planning Center giving into `giving_gifts`
 - the Monday digest — one email, to PD, not to members
 - the weekly YouTube sermon pull and enrichment
+- the weekly Meta ads performance pull — read-only insights and
+  recommendations for the Monday digest. It never writes to the ad account,
+  and it never uploads member or donor data to Meta (no Custom Audiences
+  from `giving_gifts`, `gt_*`, or any house table — that is house data used
+  to target the house)
 
 **Why the rule exists.** On 2026-08-05 `engagement_nudges.py` sent 30
 monthly-partner invitations to donors who had given $38,759 in the previous 90

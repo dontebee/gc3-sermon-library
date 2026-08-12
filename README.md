@@ -12,6 +12,9 @@ and added automatically.
 - `weekly_update.py` : the recurring job. Pulls recent uploads and adds new sermons.
 - `.github/workflows/weekly.yml` : runs `weekly_update.py` every Monday, plus a
   manual trigger.
+- `meta_ads_report.py` : weekly Meta ads performance pull and analysis
+  (read-only), feeding the Monday digest. Run by
+  `.github/workflows/meta_ads.yml`.
 
 ## Engagement nudges and weekly digest
 
@@ -62,6 +65,54 @@ Optional repo *variables*: `DIGEST_TO`, `NUDGE_FROM` (default
 
 The schema additions live in `supabase/engagement_schema.sql` (already applied
 to the live project, service-role only like everything else here).
+
+## Meta ads performance report
+
+`meta_ads_report.py` (run by `.github/workflows/meta_ads.yml`, Mondays at
+12:30 UTC plus a manual trigger that defaults to dry run) answers "which ads
+are working" every week:
+
+- pulls ad-level insights from the Meta Marketing API (28 days of daily
+  history into `meta_ad_insights`, refreshed with overlap each run so
+  late-arriving attribution corrects itself),
+- compares the last 7 days to the 7 before, per ad and per campaign,
+- writes plain-language recommendations to `meta_ad_recommendations`:
+  creative fatigue (seen too often, clicks falling), ads not earning their
+  spot, the winner that deserves more budget, cost-per-result spikes,
+  disapproved or stalled ads,
+- optionally adds a short written strategy note (uses the existing
+  `ANTHROPIC_API_KEY`),
+- and prints the full report in the Action log.
+
+The Monday digest reads those tables and shows the numbers, the recommended
+moves, and the strategy note. The Monday order is deliberate: 12:30 ads
+report, 13:00 sermon pull, 14:00 engagement digest, so the digest always has
+fresh numbers.
+
+**This job is read-only against Meta.** It never changes budgets, never
+pauses ads, never creates campaigns: every change stays a decision made by a
+person in Ads Manager. And it never uploads member or donor data to Meta (no
+Custom Audiences from `giving_gifts` or anywhere else): ads aim outward, at
+people not yet in the house.
+
+### Setup
+
+1. Apply `supabase/meta_ads_schema.sql` in the Supabase SQL editor (not yet
+   applied to the live project).
+2. Add two secrets (via Doppler, like the others):
+   - `META_ACCESS_TOKEN` : a **System User** token with `ads_read`
+     (business.facebook.com > Business settings > Users > System users >
+     Generate token). Use a system user, not your own login: personal tokens
+     expire about every 60 days and the job goes quiet when they do.
+   - `META_AD_ACCOUNT_ID` : the `act=` number in the Ads Manager URL, with or
+     without the `act_` prefix.
+3. Until both secrets exist the job prints setup instructions and exits
+   cleanly, so this merges safely before the account is connected.
+
+Thresholds (fatigue frequency, click-rate floors, cost-spike percent, minimum
+impressions before judging) are named constants at the top of
+`meta_ads_report.py`. The `RESULT_PRIORITY` list decides which Meta action
+counts as an ad's "result"; tune it as campaign objectives change.
 
 ## Filtering rules (weekly job)
 
