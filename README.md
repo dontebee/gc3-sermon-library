@@ -143,6 +143,12 @@ Beyond the two META_ secrets it needs, one-time setup:
 2. Regenerate the token with `leads_retrieval`, `pages_show_list`,
    `pages_read_engagement` and `pages_manage_ads` (keep `ads_read`), and
    update `META_ACCESS_TOKEN`.
+3. **Leads Access Manager.** The Page has it enabled (confirmed via the Lead
+   Ads Testing Tool), which means only explicitly assigned apps may retrieve
+   leads, whatever the token's permissions say. In Meta Business Suite, open
+   the Page's settings > Leads Access, and assign the app the token was
+   generated under (GC3 Reporting). Without this the mirror reads zero leads
+   and tells you so in the log.
 
 Until then the job prints setup instructions and exits cleanly.
 
