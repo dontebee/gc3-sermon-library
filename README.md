@@ -19,7 +19,11 @@ and added automatically.
   out before and after the agency switch. Run by hand from
   `.github/workflows/meta_history.yml`.
 - `meta_api.py` : the Graph API client (token, retries, pagination) shared
-  by both ads jobs.
+  by the ads jobs.
+- `meta_leads_rescue.py` : daily mirror of every Meta instant-form lead into
+  the `meta_leads` table, beating Meta's 90-day deletion window and
+  backstopping the ChurchFunnels integration. Run by
+  `.github/workflows/meta_leads.yml`.
 
 ## Engagement nudges and weekly digest
 
@@ -118,6 +122,29 @@ Thresholds (fatigue frequency, click-rate floors, cost-spike percent, minimum
 impressions before judging) are named constants at the top of
 `meta_ads_report.py`. The `RESULT_PRIORITY` list decides which Meta action
 counts as an ad's "result"; tune it as campaign objectives change.
+
+### The lead mirror (rescue once, backstop forever)
+
+Meta deletes instant-form submissions 90 days after they are submitted, and
+the ChurchFunnels Facebook integration has leaked leads before. The mirror
+job walks every Page the token can see, every lead form, and every lead
+still alive, and upserts them into `meta_leads` (schema in
+`supabase/meta_leads_schema.sql`, applied). Daily at 13:30 UTC, plus a
+manual trigger that defaults to dry run. **Counts only in the logs**: lead
+names, emails and phone numbers go to Supabase and nowhere else, and the
+workflow deliberately uploads no artifacts.
+
+Beyond the two META_ secrets it needs, one-time setup:
+
+1. Assign the church's Facebook Page to the `gc3-reporting` system user
+   (Business settings > Users > System users > Assign assets > Pages). If
+   the Page lives in the church's own portfolio, partner-share it first,
+   the same way the ad account was shared.
+2. Regenerate the token with `leads_retrieval`, `pages_show_list`,
+   `pages_read_engagement` and `pages_manage_ads` (keep `ads_read`), and
+   update `META_ACCESS_TOKEN`.
+
+Until then the job prints setup instructions and exits cleanly.
 
 ### The history diagnostic (run once, read forever)
 

@@ -1,0 +1,54 @@
+name: Meta lead mirror
+
+on:
+  schedule:
+    - cron: '30 13 * * *'   # daily at 13:30 UTC, between the Monday sermon
+                            # pull (13:00) and the engagement run (14:00).
+                            # Daily because this is the backstop pipe: Meta
+                            # deletes instant-form leads after 90 days, and
+                            # the ChurchFunnels integration has leaked before.
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        # Defaults ON for manual runs, per house rule (see CLAUDE.md). Read
+        # -only against Meta either way; dry run also skips the Supabase
+        # writes. Untick it deliberately to mirror for real. The daily
+        # schedule is unaffected: inputs do not apply to it.
+        description: 'Dry run (fetch and count, write nothing). Untick to mirror for real.'
+        type: boolean
+        default: true
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # Lead content goes to Supabase and nowhere else. This job prints
+      # counts only, and there is deliberately NO artifact upload step:
+      # names, emails and phone numbers must never land in logs or
+      # downloadable artifacts.
+      - name: Mirror instant-form leads
+        env:
+          # Four spellings, two values, one Supabase project. gc3_env.py picks
+          # whichever is set, preferring the intranet's names, so Doppler only
+          # has to hold one of each.
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          # Needs more than ads_read: leads_retrieval, pages_show_list,
+          # pages_read_engagement and pages_manage_ads, plus the Page
+          # assigned to the system user. Until then the job prints setup
+          # instructions and exits cleanly.
+          META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
+          META_AD_ACCOUNT_ID: ${{ secrets.META_AD_ACCOUNT_ID }}
+          DRY_RUN: ${{ inputs.dry_run && '1' || '' }}
+        run: python meta_leads_rescue.py
