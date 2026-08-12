@@ -20,6 +20,8 @@ One run does three things:
 
 3. Monday digest. One email to the Lead Pastor: Growth Track movement,
    intranet activity, giving totals, first-time givers, new monthly partners,
+   last week's Meta ads numbers and recommendations (written to Supabase by
+   meta_ads_report.py, read here so the digest needs no Meta credentials),
    and the personal touches that should not be automated — a text from the
    pastor, a handwritten note.
 
@@ -596,6 +598,65 @@ def intranet():
     return out
 
 
+# ---------------------------------------------------------------- meta ads
+
+def meta_ads():
+    """Last week's Meta ads numbers and the latest recommendations, as written
+    by meta_ads_report.py (its own workflow, Mondays before this one). Reads
+    Supabase only, so the digest holds no Meta credentials. Missing tables or
+    no rows yet: the section explains how to connect instead of breaking the
+    digest."""
+    since = (NOW - timedelta(days=7)).date().isoformat()
+    try:
+        rows = sb.table("meta_ad_insights").select(
+            "day,spend,impressions,results,result_type,ad_name"
+        ).gte("day", since).execute().data or []
+    except Exception:
+        rows = []
+    if not rows:
+        return {"connected": False}
+
+    spend = sum(float(r.get("spend") or 0) for r in rows)
+    impressions = sum(int(r.get("impressions") or 0) for r in rows)
+    results = {}
+    for r in rows:
+        t = r.get("result_type")
+        if t:
+            results[t] = results.get(t, 0) + int(r.get("results") or 0)
+
+    per_ad = {}
+    for r in rows:
+        a = per_ad.setdefault(r.get("ad_name") or "unnamed", {"spend": 0.0, "results": 0})
+        a["spend"] += float(r.get("spend") or 0)
+        a["results"] += int(r.get("results") or 0)
+    best = None
+    for name, a in per_ad.items():
+        if a["results"] >= 3:
+            cpr = a["spend"] / a["results"]
+            if best is None or cpr < best[1]:
+                best = (name, cpr)
+
+    recs, strategy = [], None
+    try:
+        latest = sb.table("meta_ad_recommendations").select(
+            "run_on,kind,recommendation"
+        ).order("run_on", desc=True).limit(100).execute().data or []
+        if latest:
+            newest = latest[0]["run_on"]
+            for r in latest:
+                if r["run_on"] != newest:
+                    continue
+                if r["kind"] == "strategy":
+                    strategy = r["recommendation"]
+                else:
+                    recs.append(r["recommendation"])
+    except Exception:
+        pass
+
+    return {"connected": True, "spend": spend, "impressions": impressions,
+            "results": results, "best": best, "recs": recs, "strategy": strategy}
+
+
 # ---------------------------------------------------------------- digest
 
 def h(s):
@@ -614,7 +675,7 @@ def ul(items, empty="Nothing this week."):
     return f'<ul style="margin:6px 0;padding-left:20px;color:#222;">{lis}</ul>'
 
 
-def digest(gt, giv, intra):
+def digest(gt, giv, intra, ads):
     week_of = NOW.astimezone(CT).strftime("%B %d, %Y")
     parts = [f'<div style="max-width:640px;margin:0 auto;padding:24px;'
              f'font-family:Arial,Helvetica,sans-serif;font-size:14px;">'
@@ -662,6 +723,30 @@ def digest(gt, giv, intra):
                                        'access token) to activate first-time giver celebrations '
                                        'and monthly giving nudges.</p>'))
 
+    if ads.get("connected"):
+        parts_line = f"${ads['spend']:,.2f} spent, {ads['impressions']:,} impressions"
+        if ads["results"]:
+            counted = ", ".join(f"{v} {h(k)}" for k, v in
+                                sorted(ads["results"].items(), key=lambda x: -x[1]))
+            parts_line += f", results: {counted}"
+        ad_lines = [parts_line]
+        if ads.get("best"):
+            name, cpr = ads["best"]
+            ad_lines.append(f"Best value: <b>{h(name)}</b> at ${cpr:,.2f} per result")
+        parts.append(section("Meta ads (last 7 days)", ul(ad_lines)))
+        parts.append(section(
+            "Meta ads: recommended moves (made in Ads Manager, not automated)",
+            ul([h(r) for r in ads["recs"][:8]], "No flags this week; let it ride.")))
+        if ads.get("strategy"):
+            body = "<br>".join(h(ln) for ln in ads["strategy"].splitlines() if ln.strip())
+            parts.append(section("Meta ads: strategy note",
+                                 f'<p style="margin:6px 0;color:#222;">{body}</p>'))
+    else:
+        parts.append(section("Meta ads", '<p style="color:#888;">Not connected yet. Apply '
+                                         'supabase/meta_ads_schema.sql, add META_ACCESS_TOKEN and '
+                                         'META_AD_ACCOUNT_ID repo secrets, and the Meta ads workflow '
+                                         'fills this in each Monday. See the README.</p>'))
+
     intra_lines = []
     labels = [("new_accounts", "New intranet accounts"), ("wall_posts", "Wall posts"),
               ("prayers", "Prayer requests"), ("testimonies", "Testimonies"),
@@ -696,12 +781,13 @@ def main():
     gt = growth_track()
     giv = giving()
     intra = intranet()
+    ads = meta_ads()
     # The job runs daily so pathway steps land on time; the digest ships once a
     # week (Mondays, Central) unless FORCE_DIGEST asks for it now.
     digest_day = NOW.astimezone(CT).weekday() == 0
     force = os.environ.get("FORCE_DIGEST", "").strip() in ("1", "true", "yes")
     if digest_day or force:
-        body = digest(gt, giv, intra)
+        body = digest(gt, giv, intra, ads)
         week_of = NOW.astimezone(CT).strftime("%b %d")
         send_email(DIGEST_TO, f"GC3 Weekly Digest: Growth Track and Giving ({week_of})",
                    body, "weekly_digest", capped=False)

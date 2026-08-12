@@ -1,0 +1,44 @@
+name: Meta ads history diagnostic
+
+on:
+  workflow_dispatch:
+    # No dry-run input on purpose: this job is read-only against Meta and
+    # writes nothing anywhere (no Supabase, no email). Its output is the
+    # report file uploaded as a workflow artifact.
+    inputs:
+      months:
+        description: 'Months of history to pull (Meta keeps about 37)'
+        type: string
+        default: '36'
+      switch_date:
+        description: 'Agency handoff date, YYYY-MM-DD (optional: adds the before/after era comparison)'
+        type: string
+        default: ''
+
+jobs:
+  history:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Pull monthly ad history
+        env:
+          META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN }}
+          META_AD_ACCOUNT_ID: ${{ secrets.META_AD_ACCOUNT_ID }}
+          HISTORY_MONTHS: ${{ inputs.months }}
+          SWITCH_DATE: ${{ inputs.switch_date }}
+        run: python meta_ads_history.py
+
+      - name: Upload the report
+        uses: actions/upload-artifact@v4
+        if: hashFiles('meta_ads_history_report.md') != ''
+        with:
+          name: meta-ads-history-report
+          path: meta_ads_history_report.md
