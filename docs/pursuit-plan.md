@@ -46,8 +46,8 @@ stage; it is the water the whole fleet sails on.
 
 | Ship | Who is aboard | Boarding marker (data) | Automation posture |
 |---|---|---|---|
-| **Friendship** | First contact: the ad, the DM, the PMV form, the invited coworker | lead captured (`meta_leads` / `visit_plans`) | Heaviest: confirmations, reminders, re-invites. The machine's home turf. |
-| **Fellowship** | Showing up, coming back | attended recorded (Sunday mode, PCO Check-Ins) | Light: after-visit thank you, a return nudge, then hands off to humans. |
+| **Friendship** | Known to the house, not yet in Planning Center: the ad, the DM, the PMV form, the invited coworker | lead captured, and no PCO record yet | Heaviest: confirmations, reminders, re-invites. The machine's home turf. |
+| **Fellowship** | Everybody the house has entered: visitors, first-time guests, givers under the Partnership bar | **has a Planning Center record.** See docs/pursuit-ship-rules.md | Light: after-visit thank you, a return nudge, then hands off to humans. |
 | **Partnership** | Planted and committed to the house | Growth Track complete, covenant step taken, serving team joined. **Never a giving marker: a partner who gives quietly is seen by God, not by the software.** | Celebration sends only; enrollment into Discipleship invitations. |
 | **Discipleship** | Being formed | Charisma Track, mentoring, serving consistently | Minimal: scheduling help and human tasks. Formation is hand to hand. |
 | **Leadership** | Reproducing | Leader Track, leading a team or group | None toward the person; the system instead helps them start new Friendships. |

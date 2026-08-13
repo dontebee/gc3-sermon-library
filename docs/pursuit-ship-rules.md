@@ -79,7 +79,24 @@ These govern every rule below.
 
 ## The rules
 
-### Friendship: first contact, no attendance yet
+### The line between the first two ships
+
+PD's rule, and it is the cleanest boundary in the system: **a Planning
+Center record is the border.**
+
+- **Friendship** is everybody the house knows *about*. A name, a hand
+  raised, no record in the church's system yet.
+- **Fellowship** is everybody the house has *entered*. Once a person exists
+  in Planning Center, they are aboard, whatever else is or is not true
+  about them.
+
+That boundary is worth keeping because it maps to a real moment somebody
+performed: the house decided this person is a person, not a lead, and made
+them a record. It also means the promotion from Friendship to Fellowship
+happens on its own, the first time a guest checks in, gives, or gets typed
+into PCO by a staff member.
+
+### Friendship: known to the house, not yet in Planning Center
 
 | # | Rule | Source | Status |
 |---|---|---|---|
@@ -90,22 +107,36 @@ These govern every rule below.
 | F5 | Reached out by DM or chat | ManyChat, later | proposed |
 | F6 | Was invited by a member (referral named) | PCO field | proposed |
 
-A bare PCO record with no activity of any kind is **not** Friendship. It
-goes in People with no ship until something happens, so the board is not
-padded with names nobody is chasing.
+Every one of these is Friendship **only while no PCO record exists**. The
+moment one does, they board Fellowship.
 
-### Fellowship: showing up
+### Fellowship: has a Planning Center record
 
 | # | Rule | Source | Status |
 |---|---|---|---|
-| L1 | Checked in to any service, once | PCO Check-Ins | proposed |
-| L2 | Two or more check-ins in 90 days | PCO Check-Ins | proposed |
-| L3 | Came back within 30 days of a first visit | PCO Check-Ins | proposed |
-| L4 | Tapped "I'm here" on a livestream | `live_here` | proposed |
-| L5 | Actually attended an event they registered for | PCO Check-Ins | proposed |
+| L0 | **Has a PCO record at all.** The floor. | PCO People | PD |
+| L1 | A visitor or first-time guest | PCO People | PD |
+| L2 | Gave, but under the Partnership bar | `giving_gifts` | PD |
+| L3 | Checked in to any service | PCO Check-Ins | proposed |
+| L4 | Came back within 30 days of a first visit | PCO Check-Ins | proposed |
+| L5 | Tapped "I'm here" on a livestream | `live_here` | proposed |
 
-L3 is worth naming on its own. The second visit is where a guest becomes a
-person who comes here, and it is the number the house should watch hardest.
+L0 makes the other rules in this section descriptive rather than decisive:
+they no longer have to earn Fellowship, because the record already did. They
+still matter, because they are what the dormancy flag and the Partnership
+rules read.
+
+L4 is still worth naming on its own. The second visit is where a guest
+becomes a person who comes here, and it is the number the house should watch
+hardest even though it no longer changes a ship.
+
+**What this does to the fleet.** Fellowship becomes the largest ship by far:
+giving alone knows 3,340 people, and the full PCO roster is larger still.
+That is the honest shape of a church, and it makes two things true at once.
+The good: the board finally holds everybody, which is what PD asked for. The
+demanding: **a number that large is meaningless without the dormancy flag
+below.** "4,000 in Fellowship" says nothing. "4,000 in Fellowship, 1,100 of
+them seen this year" is a report a pastor can actually act on.
 
 ### Partnership: planted and committed
 
@@ -167,11 +198,17 @@ Not a ship. A flag that rides alongside one.
 | Q2 | Quiet 12 months | surfaces on a "go find them" list |
 | Q3 | Any signal returns | flag clears, nothing else changes |
 
-This is how a fleet of thousands stays honest. Without it, Partnership
-becomes a graveyard: everyone who was ever planted, forever, and the number
-stops meaning anything. With it, PD can ask the only question that matters
-about a big number: **how many of these people did we actually see this
-year?**
+This is how a fleet of thousands stays honest, and with a PCO record now
+being enough to board Fellowship, it stops being a nicety and becomes
+load-bearing. Without it, both of the big ships turn into graveyards:
+everyone who ever gave once or got typed into Planning Center, forever, and
+the numbers stop meaning anything. With it, PD can ask the only question
+that matters about a big number: **how many of these people did we actually
+see this year?**
+
+The fleet view should therefore never show a bare count. Every ship reads
+"1,240 aboard, 380 seen this year", so the size of the house and the state
+of the house arrive in the same glance.
 
 ## What has to be built
 
@@ -193,6 +230,10 @@ year?**
 
 1. Does the giving-frequency rule stand, with the never-display safeguard?
 2. Is P7 (12+ visits, no membership) right at twelve, or should it be more?
-3. Should a bare PCO record with no activity appear on the board at all?
-4. Where does Charisma Track live, and can the resolver read it?
-5. Who may pin a person's ship by hand?
+3. ~~Should a bare PCO record appear on the board?~~ **Answered: yes, and it
+   is Fellowship.** A Planning Center record is the border between the first
+   two ships.
+4. Is six months the right point to call somebody dormant, or is a church
+   year (say ten months, which survives a summer away) truer?
+5. Where does Charisma Track live, and can the resolver read it?
+6. Who may pin a person's ship by hand?
