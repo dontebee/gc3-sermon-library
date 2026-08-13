@@ -1,0 +1,40 @@
+name: PCO People roster mirror
+
+on:
+  schedule:
+    - cron: '15 10 * * *'  # daily at 10:15 UTC, ahead of pursuit resolve
+                           # (11:00) so the roster is fresh before the
+                           # board thinks about who is who
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        # Defaults ON for manual runs, per house rule (see CLAUDE.md).
+        description: 'Dry run (read and report, write nothing). Untick to write.'
+        type: boolean
+        default: true
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # Counts only in the log, and no artifact upload: names, emails and
+      # phone numbers belong in the database and nowhere else.
+      - name: Mirror the roster
+        env:
+          PCO_APP_ID: ${{ secrets.PCO_APP_ID }}
+          PCO_SECRET: ${{ secrets.PCO_SECRET }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          DRY_RUN: ${{ inputs.dry_run && '1' || '' }}
+        run: python pco_people_sync.py

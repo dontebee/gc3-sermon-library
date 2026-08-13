@@ -19,11 +19,17 @@ Matching, strongest evidence first:
 Ship assignment reads evidence, never guesses upward:
 
   friendship  a lead exists, a visit was planned
-  fellowship  they attended something
-  partnership Growth Track finished, or they serve on a team
+  fellowship  they attended something, or simply exist in Planning Center:
+              PD's floor rule, a PCO record at all is Fellowship
+  partnership Growth Track finished, they serve on a team, or PCO calls
+              them a Member or Partner (the promise rules, P1)
   discipleship / leadership  left alone: the Charisma Track and Leader
               Track tables do not exist yet, and no job should promote
               somebody into formation on a hunch. A human sets these.
+
+Children never board. A four year old in PCO stays in pco_people for the
+household roll-up and gets no pursuit_people row: ships are for people who
+can answer for themselves, and kids' check-ins credit their adults.
 
 Nobody is ever moved backward by this job. If a person is already further
 along than the evidence suggests (a human moved them, or a track promoted
@@ -196,6 +202,29 @@ def main():
     reg = Registry()
     cards = []          # (person, card dict) pending person ids
 
+    # --- The Planning Center roster: PD's floor rule (L0). A PCO record at
+    # all is Fellowship; a membership of Member or Partner is the promise
+    # and boards Partnership (P1). This source goes first so the PCO person
+    # id anchors identity before the fuzzier sources arrive.
+    roster = fetch_all("pco_people",
+                       "pco_person_id,name,first_name,last_name,email,phone,"
+                       "membership,child,avatar_url,pco_created_at")
+    kids = 0
+    for r in roster:
+        if r.get("child"):
+            kids += 1
+            continue                 # children never board; households roll up
+        member = (r.get("membership") or "").strip().lower() in ("member", "partner")
+        name = (r.get("name")
+                or " ".join(x for x in (r.get("first_name"), r.get("last_name")) if x)
+                or None)
+        reg.upsert(pco=r["pco_person_id"], email=r.get("email"),
+                   phone=r.get("phone"), name=name,
+                   ship="partnership" if member else "fellowship",
+                   source="pco_people", seen_at=r.get("pco_created_at"),
+                   avatar_url=r.get("avatar_url"))
+    print(f"  pco roster: {len(roster)} record(s), {kids} kept ashore as children")
+
     # --- Growth Track: people the house is already forming. Emails live in
     # profiles (gt_profiles has none), keyed by the same auth user id.
     gt = fetch_all("gt_profiles",
@@ -267,7 +296,8 @@ def main():
     for p in reg.people:
         ships[p["ship"]] = ships.get(p["ship"], 0) + 1
     print()
-    print(f"Resolved {len(reg.people)} person(s) from {len(gt) + len(serving) + len(ghl) + len(leads)} source row(s).")
+    print(f"Resolved {len(reg.people)} person(s) from "
+          f"{len(roster) + len(gt) + len(serving) + len(ghl) + len(leads)} source row(s).")
     for s in SHIPS:
         if ships.get(s):
             print(f"  {s}: {ships[s]}")
