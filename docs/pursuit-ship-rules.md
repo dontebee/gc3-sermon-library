@@ -137,9 +137,9 @@ hardest even though it no longer changes a ship.
 giving alone knows 3,340 people, and the full PCO roster is larger still.
 That is the honest shape of a church, and it makes two things true at once.
 The good: the board finally holds everybody, which is what PD asked for. The
-demanding: **a number that large is meaningless without the dormancy flag
+demanding: **a number that large is meaningless without the state axis
 below.** "4,000 in Fellowship" says nothing. "4,000 in Fellowship, 1,100 of
-them seen this year" is a report a pastor can actually act on.
+them active" is a report a pastor can actually act on.
 
 ### Partnership: planted and committed
 
@@ -225,27 +225,134 @@ Leadership takes no automation aimed at the person. What the system does
 instead is help them start new Friendships, which is what closes the loop
 and turns the fleet into an engine rather than a pipe.
 
-### Dormancy: the state that is missing
+## State: the second axis
 
-Not a ship. A flag that rides alongside one.
+A ship says how far somebody got. It does not say whether they are still
+here. Those are two different facts and the system has been carrying only
+one of them.
 
-| # | Rule | Meaning |
+**Ship is a high-water mark. State is a pulse.** A person keeps their ship
+and carries a state alongside it. "An inactive partner" is a true and useful
+sentence. "Demoted to Fellowship" is neither, and it is dangerous: a demoted
+person could be swept back into a plan-your-visit sequence, which is the
+2026-08-05 failure wearing a new coat.
+
+### What counts as a signal
+
+Everything downstream depends on this list, so it is written before the
+states are.
+
+| Signal | Source |
+|---|---|
+| Checked in to a service or event | PCO Check-Ins |
+| Gave | `giving_gifts` |
+| Served | PCO Serving |
+| Registered for anything | PCO Registrations |
+| Attended a Growth Track or Charisma session | `gt_activity` |
+| Their kids checked in | PCO Check-Ins, rolled up to the household |
+| Tapped "I'm here" on the livestream | `live_here` |
+
+Two of those are easy to leave out and both would be a mistake. **Kids'
+check-ins keep the parents active**, or every family whose adults do not
+badge in reads as gone. **The livestream tap keeps online people active**,
+or the household in another state who watches every week and gives nothing
+gets filed as lapsed. Online Attendance is one of the seven vital signs; it
+should not be invisible to the clock that decides who is still here.
+
+### The four states
+
+| State | Trigger | Set by |
 |---|---|---|
-| Q1 | No attendance, serving, or giving in 6 months | `dormant_since` set |
-| Q2 | Quiet 12 months | surfaces on a "go find them" list |
-| Q3 | Any signal returns | flag clears, nothing else changes |
+| **Active** | any signal in the last 6 months | the clock |
+| **Dormant** | no signal in 6 months | the clock, sets `dormant_since` |
+| **Inactive** | no signal in 24 months | the clock, PD's rule |
+| **Archived** | a known reason | **a human, always** |
 
-This is how a fleet of thousands stays honest, and with a PCO record now
-being enough to board Fellowship, it stops being a nicety and becomes
-load-bearing. Without it, both of the big ships turn into graveyards:
-everyone who ever gave once or got typed into Planning Center, forever, and
-the numbers stop meaning anything. With it, PD can ask the only question
-that matters about a big number: **how many of these people did we actually
-see this year?**
+Three rules protect the people underneath:
 
-The fleet view should therefore never show a bare count. Every ship reads
-"1,240 aboard, 380 seen this year", so the size of the house and the state
-of the house arrive in the same glance.
+1. **A clock never archives.** Silence is not information about why. It
+   could be a move, a hospital, a hurt, or a death. Inactive is the most a
+   date arithmetic is allowed to conclude.
+2. **Archiving never deletes.** The record, the history, and the reasons
+   stay. Archive means "stop counting them and stop looking for them", not
+   "pretend they were never here".
+3. **A return is loud.** Any signal clears Dormant or Inactive immediately,
+   and it should surface, not just quietly flip a field. Somebody coming
+   home after two years is the best event this system can detect and it
+   should not pass in silence.
+
+### Archive reasons, because they do not behave alike
+
+| Reason | Behaviour |
+|---|---|
+| Moved away | Keep the record. Never on a win-back list. Not a loss. |
+| Went to another church | Same, and it is a good outcome, not a failure to fix. |
+| **Deceased** | Never on any list, never in any count, ever. Flag the household for care. |
+| Asked to be removed | Hard stop. This one propagates to the Pathways suppression list. |
+| Not a real person | Test record, bot form fill, bad lead. |
+
+Duplicates are not archived. They are merged, through
+`pursuit_merge_candidates`, because archiving one of them loses whichever
+history sat on the wrong record.
+
+**Deceased is absolute and it needs checking before anything renders, not
+after.** The failure mode is small, quiet, and unforgivable: a "we miss you"
+list with a widow's late husband on it. Every list, every count, every
+export checks this first.
+
+### What this does to the numbers
+
+Giving is the only source with real history today, so it is the honest test.
+Of **3,340 people who have ever given**:
+
+| Last gift | People |
+|---|---|
+| Within 6 months | **878** |
+| Within 12 months | 1,254 |
+| Within 24 months | 1,789 |
+| **Silent more than 24 months** | **1,551** |
+
+Forty-six percent of the giving roster is Inactive under PD's rule. The
+oldest last gift on file is January 2016, a decade ago. Without the second
+axis, all 3,340 of those people sit on Fellowship forever and the ship
+count means nothing.
+
+Two lists fall straight out of it, and they are not the same list:
+
+- **191 lapsed partners.** Ten or more lifetime gifts, silent over two
+  years. These are people who were genuinely planted here and are gone. It
+  is the most sobering number in this document.
+- **156 partners gone quiet.** Ten or more gifts, last one between six and
+  twenty-four months ago. Dormant, not yet Inactive. **This is the
+  recoverable list**, and it is the one worth working first, because the
+  other one has had two years to settle.
+
+For scale in the other direction: **1,435 people gave exactly once**, and
+798 of those were more than two years ago. That is what Fellowship is mostly
+made of, and it is fine, as long as the board says so plainly.
+
+### How the board should read
+
+No bare counts, anywhere. Every ship reads **"1,240 aboard, 380 active"**,
+so the size of the house and the state of the house arrive in the same
+glance. The default fleet view shows active only, with inactive one tap
+away rather than hidden. Archived is off by default and findable by search,
+never by browsing.
+
+And the interaction that will tempt somebody to "fix" the resolver, stated
+so nobody does: a person with twelve gifts whose last one was three years
+ago no longer satisfies P3, whose window is twenty-four months. **They stay
+on Partnership anyway**, flagged Inactive. That is rule 2 doing its job.
+They did not stop having been a partner. They stopped being here.
+
+### Handoff to the Pathways engine
+
+Pursuit publishes state. It does not act on it. No suppression, no send, no
+enrolment, no exception. The Pathways engine reads `state` the same way it
+reads anything else here, and its own switch, suppression list, and rate
+limits decide what happens next. The one hard edge is "asked to be
+removed", which has to reach the shared suppression list rather than living
+only in Pursuit.
 
 ## What has to be built
 
@@ -258,8 +365,11 @@ of the house arrive in the same glance.
 4. **Giving frequency read**: the resolver reads it all; the card renders
    "gives consistently" and never a number.
 5. **Rule engine**: evaluate all rules per person, take the highest ship,
-   store the reasons, respect manual pins, set dormancy, set the A flags.
-6. **Charisma Track and mentoring**: no data source exists yet. Until one
+   store the reasons, respect manual pins, set state, set the A flags.
+6. **State and archive**: a `state` column, a `last_signal_at` column that
+   every sync updates, an `archived_reason` a human sets and a clock never
+   does, and the deceased check that runs before any list renders.
+7. **Charisma Track and mentoring**: no data source exists yet. Until one
    does, D1 and D7 need a manual flag, which is the honest answer rather
    than a guess.
 
@@ -274,9 +384,15 @@ of the house arrive in the same glance.
 3. ~~Should a bare PCO record appear on the board?~~ **Answered: yes, and it
    is Fellowship.** A Planning Center record is the border between the first
    two ships.
-4. Is six months the right point to call somebody dormant, or is a church
-   year (say ten months, which survives a summer away) truer?
-5. Where does Charisma Track live, and can the resolver read it?
-6. Who may pin a person's ship by hand?
-7. What counts as "regular" for the A1 flag: twelve check-ins in a year, or
+4. ~~Should silence archive somebody?~~ **Answered: no.** Twenty-four
+   months of nothing makes a person Inactive. Archived is always a human
+   act, because a clock cannot know why somebody went quiet.
+5. Is six months the right point to call somebody dormant, or is a church
+   year (say ten months, which survives a summer away) truer? This is now
+   the one date left unset, and it decides the size of the recoverable list.
+6. Where does Charisma Track live, and can the resolver read it?
+7. Who may pin a person's ship by hand, and who may archive?
+8. What counts as "regular" for the A1 flag: twelve check-ins in a year, or
    something stricter like two a month for three months running?
+9. Where does the house record a death today? Nothing in this system is
+   trustworthy on that point until there is one source it can read.
