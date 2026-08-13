@@ -85,10 +85,10 @@ values
   ('P6', 'partnership', 'Finished Growth Track', 'time', 'growth_track', null, null, 'proposed', true, 'built and running'),
   ('P7', 'partnership', 'Belongs to a small group', 'time', 'group', null, null, 'proposed', true, null),
   ('P8', 'partnership', 'Was baptized here', 'promise', 'baptism', null, null, 'proposed', true, null),
-  -- The threshold here is a guess, and the rule itself depends on the
-  -- unresolved Option A / Option B question about whether a bare check-in
-  -- is Time. Disabled until PD rules.
-  ('P9', 'partnership', 'Registered for and attended 3+ things in 12 months', 'time', 'registration', 3, 365, 'proposed', false, 'threshold is a guess; awaiting the Time decision'),
+  -- Time, now that PD has chosen Option B. Seeded as proposed and then
+  -- promoted by the update at the foot of this file, so that a reset to
+  -- defaults replays the decision rather than losing it.
+  ('P9', 'partnership', 'Registered for and attended 3+ things in 12 months', 'time', 'registration', 3, 365, 'proposed', false, 'threshold is a guess'),
 
   -- Discipleship
   ('D1', 'discipleship', 'Enrolled in Charisma Track', null, 'growth_track', null, null, 'pd', false, 'no data source exists yet'),
@@ -110,5 +110,40 @@ values
   ('A1', 'flag', 'Faithful, unattached: comes, gives none of the three', null, 'check_in', 12, 365, 'proposed', true, null),
   ('A2', 'flag', 'Half attached: gives one of the three, under its bar', null, 'check_in', 12, 365, 'proposed', true, null),
   ('A3', 'flag', 'Gave once, stayed', 'treasure', 'gift', 1, null, 'proposed', true, null),
-  ('A4', 'flag', 'Kids in, parents out', 'time', 'household', 5, 365, 'proposed', true, null)
+  ('A4', 'flag', 'Kids in, parents out', 'time', 'household', 5, 365, 'proposed', true, null),
+
+  -- L1 is PD's, said in the same breath as L0 ("Visitors, 1st time guests"),
+  -- and the first version of this seed dropped it. The audit that caught it
+  -- is the reason the table exists: a rule that is only in prose can go
+  -- missing without anything noticing.
+  ('L1', 'fellowship', 'A visitor or first-time guest', null, 'pco_status', null, null, 'pd', true, null),
+
+  -- The rest were in docs/pursuit-ship-rules.md and never in the table, so
+  -- the table was not actually the rule book it claimed to be.
+  ('L4', 'fellowship', 'Came back within 30 days of a first visit', null, 'check_in', 2, 30, 'proposed', true, 'the number to watch even though it changes no ship'),
+  ('L5', 'fellowship', 'Tapped "I''m here" on a livestream', null, 'live_here', 1, null, 'proposed', true, null),
+  ('F4', 'friendship', 'Sent a prayer request or connect card', null, 'form', 1, null, 'proposed', true, null),
+  ('F5', 'friendship', 'Reached out by DM or chat', null, 'message', 1, null, 'proposed', false, 'ManyChat not integrated'),
+  ('F6', 'friendship', 'Was invited by a member', null, 'referral', 1, null, 'proposed', false, 'no PCO field confirmed'),
+  ('D5', 'discipleship', 'Serves on two or more teams', 'talent', 'serving', 2, 365, 'proposed', true, 'threshold counts teams, not shifts'),
+  ('D6', 'discipleship', 'Growth Track done, serving, and in a group', null, 'combined', 3, 365, 'proposed', true, 'the honest definition of formed until Charisma has a table'),
+  ('D7', 'discipleship', 'In a mentoring or discipleship pair', null, 'mentoring', null, null, 'proposed', false, 'no data source exists yet'),
+  ('D8', 'discipleship', 'Attended an equipping or leadership night', 'time', 'check_in', 1, 365, 'proposed', true, null),
+  ('E3', 'leadership', 'Coaches other small group leaders', null, 'group', null, null, 'proposed', true, null),
+  ('E4', 'leadership', 'Ordained or licensed', null, 'pco_status', null, null, 'proposed', true, null),
+  ('E5', 'leadership', 'Elder, board, or campus pastor', null, 'role', null, null, 'proposed', true, null),
+  ('E6', 'leadership', 'Owns a ministry in the Hub', null, 'role', null, null, 'proposed', true, null)
 on conflict (code) do nothing;
+
+-- PD chose Option B: Time is showing up where something was promised in
+-- advance, not a bare check-in. That makes P9 a live rule rather than a
+-- parked one. The kind of rule is PD's. The number 3 is still a guess.
+update pursuit_rules
+set origin = 'pd',
+    enabled = true,
+    is_default = false,
+    set_by = 'PD',
+    set_at = now(),
+    note = 'PD chose Option B: Time is committed showing up, not a bare check-in. The threshold of 3 is still a guess and needs PD''s number.',
+    updated_at = now()
+where code = 'P9';
