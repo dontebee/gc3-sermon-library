@@ -1,11 +1,16 @@
 # Pursuit: the GC3 lead tracker
 
-*The build PD asked for: "the ultimate lead tracker." Named Pursuit, because
-GodChasers is a church named after pursuit, and the tool is where the house
-chases people the way its people chase God. Cornerstone verse, Philippians
-3:12: "I press on to take hold of that for which Christ Jesus took hold of
-me." Tagline: because He chased us first. The kanban screen inside it is the
-Board; in hallway speech, the Pursuit Board.*
+> **Pursuit is a status board for every person God sends,
+> guiding each gift through their journey with God and with GodChasers.**
+>
+> **God pursues the ONE. We are stewards of the ninety-nine.**
+>
+> **Pursuit is our tool.**
+
+*PD's creed, and the sentence every screen answers to. Cornerstone verse,
+Philippians 3:12: "I press on to take hold of that for which Christ Jesus
+took hold of me." The kanban screen inside it is the Board; in hallway
+speech, the Pursuit Board.*
 
 *Status: plan only. The data plane it stands on (lead mirror, ads scoreboard,
 attribution tables) is built or in PR #8; the app itself is not started.*
