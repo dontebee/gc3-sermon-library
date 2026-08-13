@@ -222,12 +222,32 @@ flowchart LR
 - `lt_touches`: logged human touches (called, texted, met), two-tap entry.
 - `strategy_*`: strategies and steps, compiled into `pathway_rules` and new
   pathway sequences so the Pathways engine executes everything member-facing.
+- `pco_workflows`, `pco_workflow_cards`: Planning Center Workflows mirrored
+  in (definitions, steps, live cards, assignees), synced by a scheduled job
+  on the existing PCO credentials.
+
+### Planning Center workflows: duplicate some, integrate the rest
+
+The rule that prevents dueling systems: **every process lives in exactly one
+home, and Pursuit sees all of them.**
+
+- **Mirror from day one.** PCO workflow cards appear on the Pursuit person
+  card ("Baptism Prep, step 2 of 5, assigned to LaTwanna"), so staff never
+  wonder what the other system is doing.
+- **Duplicate what is really the chase.** Visitor and assimilation workflows
+  in PCO get rebuilt as Pursuit stages and strategies, then retired in PCO.
+- **Integrate what is really operations.** Baptism prep, volunteer
+  onboarding, weddings stay in PCO, and "create a PCO workflow card" becomes
+  a strategy action in Pursuit alongside "enroll in Pathway" and "task for a
+  human": boarding Partnership can automatically open a membership-class
+  card assigned to the right staffer. Pursuit conducts; PCO plays its
+  instrument.
 
 ## Phases (each one ships something the team uses)
 
 **Phase A, see everything (fast):** the `people` spine, the Board and Person
 card read-only over existing data (mirror, opportunities import, pathway
-sends), plus the live dashboard route. No writes yet: the team looks at
+sends, PCO workflow cards), plus the live dashboard route. No writes yet: the team looks at
 Pursuit next to ChurchFunnels and feels the difference.
 
 **Phase B, work the board:** drag to move stages, notes, touches, tasks,
@@ -236,7 +256,8 @@ opens.
 
 **Phase C, strategies:** the sequence editor compiling to Pathways, the
 three templates live, the no-show revival run as its first campaign (with
-PD's copy approval, per house style).
+PD's copy approval, per house style), and PCO workflow cards as a strategy
+action so assimilation steps land on the right staffer's PCO list.
 
 **Phase D, the canvas and the extras:** React Flow drag-and-drop workflow
 builder, SMS steps (A2P registration and consent, a deliberate decision),
