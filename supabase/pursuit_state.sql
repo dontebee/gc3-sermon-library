@@ -87,3 +87,12 @@ create or replace view pursuit_people_visible as
   select * from pursuit_people
   where deceased = false
     and state <> 'archived';
+
+-- The human pin, mechanics rule 4 made physical. When a leader sets a
+-- person's ship by hand (on the board, dragging them onto a ship and
+-- confirming), the resolver never moves them again, and the pin records
+-- who and when. PD: a real person knows better than a rule.
+alter table pursuit_people
+  add column if not exists pinned_by text;
+alter table pursuit_people
+  add column if not exists pinned_at timestamptz;

@@ -310,7 +310,7 @@ def main():
         return
 
     # --- Write. Existing people keep their id and their ship if it is higher.
-    existing = fetch_all("pursuit_people", "id,email,phone,pco_person_id,ship")
+    existing = fetch_all("pursuit_people", "id,email,phone,pco_person_id,ship,pinned_by")
     by_email = {e["email"]: e for e in existing if e.get("email")}
     by_phone = {e["phone"]: e for e in existing if e.get("phone")}
     by_pco = {e["pco_person_id"]: e for e in existing if e.get("pco_person_id")}
@@ -323,7 +323,9 @@ def main():
         row = {k: v for k, v in p.items() if v is not None}
         row["updated_at"] = now.isoformat()
         if prior:
-            if rank(prior["ship"]) > rank(row.get("ship")):
+            if prior.get("pinned_by"):
+                row["ship"] = prior["ship"]     # a human pin beats every rule
+            elif rank(prior["ship"]) > rank(row.get("ship")):
                 row["ship"] = prior["ship"]     # never demote
             row["id"] = prior["id"]
             updates.append(row)
