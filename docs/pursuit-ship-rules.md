@@ -11,14 +11,18 @@ is tagged one of two ways:
   not picked. It is a suggestion wearing a rule's clothes.
 
 An earlier draft took two of PD's questions, answered them itself, and
-wrote the answers up as PD's rulings. That is the most expensive kind of
-error a document like this can make, because the whole point of it is to be
-the place where the house's actual decisions are recorded. Those two are
-marked **proposed** now and are flagged in the open questions.
+wrote the answers up as PD's rulings. Both have since been put back to PD
+and decided properly, and the record of how that went is kept below rather
+than tidied away.
 
-The structural fix is below: the rules move into a table PD can edit, so
-this document stops being where the rules live and becomes only where the
-reasoning lives.
+A second failure came out of the same root and was worse, because nothing
+would ever have surfaced it: **one of PD's actual rules had gone missing.**
+See the audit below.
+
+The structural fix is the rules table. The rules move into rows PD can
+edit, each carrying where it came from, so this document stops being where
+the rules live and becomes only where the reasoning lives. Prose can lose a
+rule silently. A table with 41 rows and an origin column cannot.
 
 > Pursuit is a status board for every person God sends, guiding each gift
 > through their journey with God and with GodChasers.
@@ -183,53 +187,62 @@ coming, saying "I will be there" and being there.
 | P6 | Finished Growth Track | **Time** | `gt_progress` | built |
 | P7 | Belongs to a small group | **Time** | PCO Groups | proposed |
 | P8 | Was baptized here | the promise | PCO, `salvation_decisions` | proposed |
-| P9 | Registered for and attended 3+ things in 12 months | **Time** | PCO Registrations + Check-Ins | proposed |
+| P9 | Registered for and attended 3+ things in 12 months | **Time** | PCO Registrations + Check-Ins | PD, threshold mine |
 
-### Where Time and the attendance question collide, unresolved
+### What Time counts: settled
 
-**This section is `proposed`. PD has not ruled on it.** The previous draft
-did rule on it, in PD's name, and that was wrong.
+The question was whether a bare check-in is Time. PD said Time is showing
+up and listed check-ins among the examples; PD also doubted that people who
+attend without giving or serving are partners. Both could not stand
+unqualified, so it went back as a choice between taking the words literally
+and narrowing Time to committed showing up.
 
-Here is the actual tension, stated without an answer attached.
+**PD chose the second.** `PD`
 
-PD said Time is showing up, and the examples given were: registering kids,
-showing up to events, saying I will be there, **check-ins**. Check-ins were
-on that list explicitly.
+**Time is showing up where something was promised in advance.** A
+registration, an RSVP, a Growth Track seat held for six weeks, a group that
+meets Tuesdays, your kids booked into a room week after week. Somebody was
+planning around you and you honoured it.
 
-PD separately asked: *if people attend our church but do not give or serve,
-we need to consider if they are a partner at all.* That was a question, and
-the previous draft converted it into a ruling.
+**A walk-in check-in is presence, not a gift**, because nobody was counting
+on it. So attendance alone does not reach Partnership, and the twelve-visit
+rule an earlier draft proposed is out for good. Those people are not lost,
+they are the A1 flag.
 
-Both cannot stand unqualified. If a bare check-in is Time, and any one of
-the three makes a partner, then attendance alone does make a partner, and
-the question PD raised answers itself in the direction PD seemed to doubt.
+That makes **P9 a live rule**: registered for and attended three or more
+things in twelve months. The kind of rule is PD's. **The number three is
+still mine**, and it is the last threshold in the system nobody has chosen
+on purpose.
 
-Two ways out, and it is PD's call which:
+Each currency has a bar, and picking it is separate from naming the
+currency. One gift of twenty dollars is not Treasure; ten gifts in two
+years is. The triad names the three ways in. The thresholds are what
+separate a partner from a receiver.
 
-**Option A, take the words literally.** Check-ins count as Time. Attendance
-at a threshold is partnership. The question PD raised is then answered by
-setting the bar high enough that a casual attender does not clear it, the
-same way ten gifts in two years keeps a one-off giver out of Treasure.
-Simple, consistent with the other two currencies, and it means a faithful
-attender who gives nothing is a partner.
+### The audit, and what it found
 
-**Option B, narrow Time to committed showing up.** Time counts only where
-something was promised in advance: a registration, an RSVP, a Growth Track
-seat, a group that meets Tuesdays, your kids booked into a room week after
-week. A walk-in check-in is presence but not a gift, because nobody was
-counting on it. This keeps PD's doubt intact and keeps the withdrawn
-twelve-visits rule withdrawn.
+PD's rules are real rules, and this document had been treating that as
+something it could restate rather than something it had to preserve. So
+every one of PD's statements was checked against the seeded table, one at a
+time.
 
-I lean to B, and I should say plainly that it is a lean and not a finding.
-Three of PD's four examples happen to be commitments made in advance, which
-is suggestive, but "check ins" was the fourth and it is right there in the
-list. Reading it out because it spoils a tidy theory is exactly the move
-that produced this section's correction.
+**Thirteen statements. Twelve had landed. One had not.**
 
-Whichever wins, **each currency needs a bar, and that is a separate
-question from which currency.** One gift of twenty dollars is not Treasure;
-ten gifts in two years is. The triad names the ways in. The thresholds
-separate a partner from a receiver, and every one of them belongs to PD.
+**L1, "visitors, first-time guests", was dropped.** PD said it in the same
+breath as the Planning Center rule, and the first seed carried L0 and L2
+and quietly lost the middle one. Nothing failed. No test broke. It simply
+was not there, which is exactly how a rule dies when it lives in prose.
+
+That is the argument for the table put better than the table's own comments
+put it. The fix is in, along with the fourteen proposed rules that were in
+this document and had never reached the database either. **The table now
+holds all 41 rules: 17 from PD, 24 proposed.**
+
+Four are enabled but blocked on data rather than on a decision, and the
+admin page has to show that difference. **D1, Charisma Track, is PD's rule
+and it is switched off**, which looks like a choice and is not one: there
+is no table to read. A rule PD made should never look declined because an
+engineer has not built its source yet.
 
 **A public commitment is the promise of the three, which is why it counts
 on its own.** A partnership date, a membership status, a baptism: none of
@@ -238,19 +251,22 @@ in" before the evidence has had time to accumulate. The house takes people
 at their word, so P1, P2 and P8 stand as rules rather than waiting for
 proof. That is the right posture, and it is worth knowing it is a choice.
 
-**On attendance alone.** `proposed`, not PD. What PD actually said was
-*"if people attend our church but don't give or serve we need to consider
-if they are a partner at all"*, which raises the question rather than
-closing it. An earlier draft of this file wrote it up as a ruling, added
-"the gift is not the body in the seat" as though PD had said that too, and
-withdrew a rule on that authority. None of that was PD's.
+**On attendance alone.** `PD`, now that the Time question is settled above.
+Somebody who attends and gives none of the three has received from the
+house rather than partnered with it, and the twelve-visit rule is out for
+good.
 
-Where it actually stands: the twelve-visits rule is **suspended pending the
-Option A or B decision above**, not withdrawn by PD. The argument for
-suspending it is that presence by itself only ever receives, and calling it
-partnership flatters a number at the cost of the word. Philippians 1:5 is
-*koinonia*, participation rather than attendance. That is an argument I
-find good. It is not a decision anyone has made.
+Worth keeping the record straight about how it got here, because an earlier
+draft of this file claimed the ruling before it existed. What PD said first
+was *"if people attend our church but don't give or serve we need to
+consider if they are a partner at all"*, which raises the question. The
+draft answered it, added "the gift is not the body in the seat" as though
+PD had said that too, and withdrew a rule on that authority. The conclusion
+turned out to match where PD landed. It was still not PD's to state, and a
+right answer arrived at the wrong way is a habit worth breaking rather than
+a lucky guess worth keeping.
+
+Philippians 1:5 is *koinonia*, participation rather than attendance.
 
 **A gap the previous draft invented, now closed.** That draft claimed
 Talent had no signal of its own. That was an artefact of a wrong mapping,
@@ -541,9 +557,9 @@ Pathways engine, with its switch and its suppression list.
 1. ~~Does the giving-frequency rule stand?~~ **Answered: yes.** The resolver
    sees everything; the interface stays discreet; nothing outward is ever
    triggered by giving.
-2. ~~Is attendance alone enough for Partnership?~~ **Answered: no.** A
-   partner has given the house something. Attendance without it becomes the
-   A1 flag, not a ship.
+2. ~~Is attendance alone enough for Partnership?~~ **Answered: no**, and
+   properly this time. Time is showing up where something was promised in
+   advance. A walk-in check-in becomes the A1 flag, not a ship.
 3. ~~Should a bare PCO record appear on the board?~~ **Answered: yes, and it
    is Fellowship.** A Planning Center record is the border between the first
    two ships.
@@ -560,9 +576,10 @@ Pathways engine, with its switch and its suppression list.
 9. Where does the house record a death today? Nothing in this system is
    trustworthy on that point until there is one source it can read.
 10. **What is the bar for Time?** Treasure has one (10 gifts in 24 months)
-    and Talent has one (2 serves in 90 days). Time has none yet. P9
-    proposes three registered-and-attended things in twelve months, which
-    is a guess and should be PD's number.
+    and Talent has one (2 serves in 90 days). Time now has a rule but not a
+    number: P9 says three registered-and-attended things in twelve months
+    and the three is mine. It is the last threshold in the system nobody
+    has chosen on purpose.
 11. Does the house want gifts and skills recorded in PCO? Not needed to
     classify anybody, since serving already proves Talent. Needed to ask
     who has a gift the house is not using.
