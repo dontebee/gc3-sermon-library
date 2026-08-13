@@ -21,11 +21,17 @@ Ship assignment reads evidence, never guesses upward:
   friendship  a lead exists, a visit was planned
   fellowship  they attended something, or simply exist in Planning Center:
               PD's floor rule, a PCO record at all is Fellowship
-  partnership Growth Track finished, they serve on a team, or PCO calls
-              them a Member or Partner (the promise rules, P1)
-  discipleship / leadership  left alone: the Charisma Track and Leader
-              Track tables do not exist yet, and no job should promote
-              somebody into formation on a hunch. A human sets these.
+  partnership Time, Talent, or Treasure at its bar: Growth Track finished,
+              on a serving team, 10+ gifts in 24 months, or PCO calls them
+              a Member or Partner (the promise, P1)
+  discipleship  being formed: section one of Growth Track done, or ten or
+              more Growth Track sign-in days. Groups join when synced.
+  leadership  a Hub role at tier 50 or above: team leads, GLT, staff,
+              directors, per PD
+
+The clock rides alongside: every Time, Talent or Treasure signal stamps
+last_signal_at, and PD's rule makes 24 silent months inactive, which takes
+a person off the board while the record stays. Archive remains human-only.
 
 Children never board. A four year old in PCO stays in pco_people for the
 household roll-up and gets no pursuit_people row: ships are for people who
@@ -112,6 +118,32 @@ def split_name(full):
     if not parts:
         return None, None
     return parts[0], (" ".join(parts[1:]) or None)
+
+
+DAY = 86400.0
+
+
+def parse_when(v):
+    """ISO timestamp or date string to epoch seconds, else None."""
+    if not v:
+        return None
+    from datetime import datetime
+    try:
+        return datetime.fromisoformat(str(v).replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return None
+
+
+def signal(person, when, source):
+    """A Time, Talent or Treasure signal landed for this person. The state
+    clock reads only these: PD's rule is 'given, served or registered', so a
+    mere PCO record edit never counts as life."""
+    ts = when if isinstance(when, (int, float)) else parse_when(when)
+    if ts is None:
+        return
+    if ts > person.get("_signal_ts", 0):
+        person["_signal_ts"] = ts
+        person["_signal_src"] = source
 
 
 def rank(ship):
@@ -218,11 +250,14 @@ def main():
         name = (r.get("name")
                 or " ".join(x for x in (r.get("first_name"), r.get("last_name")) if x)
                 or None)
-        reg.upsert(pco=r["pco_person_id"], email=r.get("email"),
-                   phone=r.get("phone"), name=name,
-                   ship="partnership" if member else "fellowship",
-                   source="pco_people", seen_at=r.get("pco_created_at"),
-                   avatar_url=r.get("avatar_url"))
+        person = reg.upsert(pco=r["pco_person_id"], email=r.get("email"),
+                            phone=r.get("phone"), name=name,
+                            ship="partnership" if member else "fellowship",
+                            source="pco_people", seen_at=r.get("pco_created_at"),
+                            avatar_url=r.get("avatar_url"))
+        # The moment the house entered them is the floor signal: a record
+        # typed in last month cannot have two years of silence behind it.
+        signal(person, r.get("pco_created_at"), "pco_record")
     print(f"  pco roster: {len(roster)} record(s), {kids} kept ashore as children")
 
     # --- Growth Track: people the house is already forming. Emails live in
@@ -231,34 +266,117 @@ def main():
                    "id,display_name,first_name,last_name,phone,created_at,pw_team")
     emails = {p["id"]: p["email"] for p in fetch_all("profiles", "id,email") if p.get("email")}
     progress = fetch_all("gt_progress", "user_id,lesson_id,completed_at")
-    lessons = [l for l in fetch_all("gt_lessons", "progress_key,is_published") if l.get("is_published")]
+    lessons = [l for l in fetch_all("gt_lessons", "id,submodule_id,progress_key,is_published")
+               if l.get("is_published")]
     total_lessons = len({l["progress_key"] for l in lessons})
-    done_per_user = {}
+
+    # Section one, for PD's rule D10: finishing the first module of Growth
+    # Track is formation begun, and boards Discipleship.
+    modules = sorted([m for m in fetch_all("gt_modules", "id,sort_order,is_published")
+                      if m.get("is_published")], key=lambda m: m.get("sort_order") or 0)
+    sub_by_module = {}
+    for sm in fetch_all("gt_submodules", "id,module_id"):
+        sub_by_module.setdefault(sm["module_id"], set()).add(sm["id"])
+    section1_lessons = set()
+    if modules:
+        first_subs = sub_by_module.get(modules[0]["id"], set())
+        section1_lessons = {l["id"] for l in lessons if l.get("submodule_id") in first_subs}
+
+    done_per_user, last_done = {}, {}
     for row in progress:
         if row.get("completed_at"):
             done_per_user.setdefault(row["user_id"], set()).add(row["lesson_id"])
+            ts = parse_when(row["completed_at"])
+            if ts and ts > last_done.get(row["user_id"], 0):
+                last_done[row["user_id"]] = ts
+
+    # D3: signed in 10+ distinct days. gt_activity is one row per user-day.
+    activity_days, last_active = {}, {}
+    for a in fetch_all("gt_activity", "user_id,day"):
+        activity_days[a["user_id"]] = activity_days.get(a["user_id"], 0) + 1
+        ts = parse_when(a.get("day"))
+        if ts and ts > last_active.get(a["user_id"], 0):
+            last_active[a["user_id"]] = ts
     for p in gt:
         name = (p.get("display_name")
                 or " ".join(x for x in (p.get("first_name"), p.get("last_name")) if x)
                 or None)
-        finished = total_lessons and len(done_per_user.get(p["id"], set())) >= total_lessons
-        # pw_team means they joined a serving team, which the house counts as
-        # a Partnership marker. pw_giving is deliberately ignored here and
-        # everywhere: giving never decides a person's ship.
+        done = done_per_user.get(p["id"], set())
+        finished = total_lessons and len(done) >= total_lessons
         planted = finished or bool(p.get("pw_team"))
-        reg.upsert(email=emails.get(p["id"]), phone=p.get("phone"), name=name,
-                   ship="partnership" if planted else "fellowship",
-                   source="growth_track", seen_at=p.get("created_at"),
-                   gt_profile_id=p["id"])
+        # PD's Discipleship rules: section one of Growth Track done (D10), or
+        # signed in ten or more days (D3). Formation outranks partnership.
+        formed = (section1_lessons and section1_lessons <= done) \
+            or activity_days.get(p["id"], 0) >= 10
+        ship = "discipleship" if formed else ("partnership" if planted else "fellowship")
+        person = reg.upsert(email=emails.get(p["id"]), phone=p.get("phone"), name=name,
+                            ship=ship,
+                            source="growth_track", seen_at=p.get("created_at"),
+                            gt_profile_id=p["id"])
+        signal(person, last_done.get(p["id"]), "growth_track")
+        signal(person, last_active.get(p["id"]), "growth_track")
     print(f"  growth track: {len(gt)} profile(s)")
 
     # --- Serving teams: partnership evidence from Planning Center.
     serving = fetch_all("pco_serving", "person_id,full_name,email")
+    now_ts = now.timestamp()
     for s in serving:
-        reg.upsert(pco=s.get("person_id"), email=s.get("email"),
-                   name=s.get("full_name"),
-                   ship="partnership", source="serving")
+        person = reg.upsert(pco=s.get("person_id"), email=s.get("email"),
+                            name=s.get("full_name"),
+                            ship="partnership", source="serving")
+        # The serving table is the CURRENT roster, so being on it is Talent
+        # being given now, whatever the other clocks say.
+        signal(person, now_ts, "serving")
     print(f"  serving: {len(serving)} assignment(s)")
+
+    # --- Giving: Treasure. PD's P3: ten or more gifts in 24 months is
+    # partnership. Counts and dates only; amounts are never read here, and
+    # nothing outward is ever triggered by any of it.
+    gifts = fetch_all("giving_gifts", "pco_person_id,donor_email,donor_name,received_at")
+    gift_count_24mo, last_gift = {}, {}
+    cutoff_24 = now.timestamp() - 730 * DAY
+    for g in gifts:
+        pid = g.get("pco_person_id")
+        if not pid:
+            continue
+        ts = parse_when(g.get("received_at"))
+        if ts is None:
+            continue
+        if ts >= cutoff_24:
+            gift_count_24mo[pid] = gift_count_24mo.get(pid, 0) + 1
+        if ts > last_gift.get(pid, (0, None))[0]:
+            last_gift[pid] = (ts, g)
+    strong = 0
+    for pid, (ts, g) in last_gift.items():
+        is_strong = gift_count_24mo.get(pid, 0) >= 10
+        strong += 1 if is_strong else 0
+        person = reg.upsert(pco=pid, email=g.get("donor_email"),
+                            name=g.get("donor_name"),
+                            ship="partnership" if is_strong else "friendship",
+                            source="giving")
+        signal(person, ts, "gift")
+    print(f"  giving: {len(last_gift)} giver(s), {strong} at the Partnership bar")
+
+    # --- Leadership: PD's E1/E2. Team leads sit at tier 50 in the Hub's own
+    # roles table; GLT, staff and directors sit above. Tier 50 is the line.
+    role_tier = {r["id"]: r.get("tier") or 0 for r in fetch_all("roles", "id,tier")}
+    lead_uids = set()
+    for ur in fetch_all("user_roles", "user_id,role_id,expires_at"):
+        exp = parse_when(ur.get("expires_at"))
+        if exp and exp < now.timestamp():
+            continue
+        if role_tier.get(ur.get("role_id"), 0) >= 50:
+            lead_uids.add(ur["user_id"])
+    leads = 0
+    for uid in lead_uids:
+        email = emails.get(uid)
+        if not email:
+            continue
+        leads += 1
+        person = reg.upsert(email=email, ship="leadership",
+                            source="role", auth_user_id=uid)
+        signal(person, now.timestamp(), "leads")
+    print(f"  leadership: {leads} role holder(s) at tier 50 or above")
 
     # --- ChurchFunnels: the chase as it stands today.
     ghl = fetch_all("ghl_opportunities",
@@ -272,6 +390,7 @@ def main():
                             ship="fellowship" if stage in ("attended", "returned") else "friendship",
                             source="churchfunnels", seen_at=o.get("created_on"),
                             ghl_contact_id=o.get("ghl_contact_id"))
+        signal(person, o.get("created_on"), "registration")
         cards.append((person, {"stage": stage, "source": "churchfunnels",
                                "created_at": o.get("created_on")}))
     print(f"  churchfunnels: {len(ghl)} opportunity(s)")
@@ -284,6 +403,7 @@ def main():
                             name=l.get("full_name"), ship="friendship",
                             source="meta_form", seen_at=l.get("created_time"),
                             meta_leadgen_id=l.get("leadgen_id"))
+        signal(person, l.get("created_time"), "registration")
         cards.append((person, {"stage": "planned_visit", "source": "meta_form",
                                "meta_leadgen_id": l.get("leadgen_id"),
                                "campaign_id": l.get("campaign_id"),
@@ -291,6 +411,27 @@ def main():
                                "ad_id": l.get("ad_id"),
                                "created_at": l.get("created_time")}))
     print(f"  meta leads: {len(leads)} lead(s)")
+
+    # --- The state clock. PD: no Time, Talent or Treasure in 24 months
+    # takes a person off the board. Ship is a high-water mark and never
+    # moves for silence; state is the pulse that decides visibility.
+    from datetime import datetime as _dt, timezone as _tz
+    states = {"active": 0, "dormant": 0, "inactive": 0}
+    for p in reg.people:
+        ts = p.pop("_signal_ts", 0)
+        src = p.pop("_signal_src", None)
+        age_days = (now.timestamp() - ts) / DAY if ts else None
+        if age_days is None or age_days > 730:
+            p["state"] = "inactive"
+        elif age_days > 180:
+            p["state"] = "dormant"
+            p["dormant_since"] = _dt.fromtimestamp(ts + 180 * DAY, tz=_tz.utc).isoformat()
+        else:
+            p["state"] = "active"
+        if ts:
+            p["last_signal_at"] = _dt.fromtimestamp(ts, tz=_tz.utc).isoformat()
+            p["last_signal_source"] = src
+        states[p["state"]] += 1
 
     ships = {}
     for p in reg.people:
@@ -301,6 +442,8 @@ def main():
     for s in SHIPS:
         if ships.get(s):
             print(f"  {s}: {ships[s]}")
+    print(f"State: {states['active']} active, {states['dormant']} dormant, "
+          f"{states['inactive']} inactive (off the board, record kept)")
     print(f"Cards to place: {len(cards)}")
     print(f"Same-name pairs for a human to judge: {len(reg.same_name_pairs)}")
 
@@ -310,7 +453,8 @@ def main():
         return
 
     # --- Write. Existing people keep their id and their ship if it is higher.
-    existing = fetch_all("pursuit_people", "id,email,phone,pco_person_id,ship,pinned_by")
+    existing = fetch_all("pursuit_people",
+                         "id,email,phone,pco_person_id,ship,pinned_by,state,deceased")
     by_email = {e["email"]: e for e in existing if e.get("email")}
     by_phone = {e["phone"]: e for e in existing if e.get("phone")}
     by_pco = {e["pco_person_id"]: e for e in existing if e.get("pco_person_id")}
@@ -327,6 +471,8 @@ def main():
                 row["ship"] = prior["ship"]     # a human pin beats every rule
             elif rank(prior["ship"]) > rank(row.get("ship")):
                 row["ship"] = prior["ship"]     # never demote
+            if prior.get("state") == "archived":
+                row["state"] = "archived"       # archive is a human act; the clock keeps out
             row["id"] = prior["id"]
             updates.append(row)
         else:
