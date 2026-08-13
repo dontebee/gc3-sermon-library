@@ -57,6 +57,44 @@ The design rule across the fleet: **the machine walks people to the door;
 people walk people into the family.** Automation is dense at Friendship and
 thins to nothing by Leadership.
 
+### Three languages, one system
+
+The fleet is one of three layers, each speaking to a different audience, and
+the discipline is that each stays with its audience:
+
+- **Ships** say where a person is. Congregation language; the only layer
+  that gets preached.
+- **Attract, Attach, Align, Adore** say what the house does to move people:
+  Attract fills Friendship, Attach builds Fellowship, Align forges
+  Partnership, and Adore is the deep water that carries Discipleship and
+  Leadership. Staff language; each verb names a strategy playbook in
+  Harvest.
+- **Attendance, Attention, Agreement, Allegiance** are the observable
+  signals that someone may be ready for the next ship: they show up, they
+  lean in, they buy the vision, they give their life to it. The software's
+  language: Harvest reads them from attendance records, opens and clicks,
+  Growth Track enrollment, and serving commitment, and surfaces "may be
+  ready" prompts to a human. Signals suggest; people invite.
+
+### The instrument panel: seven vital signs
+
+Church-level health on the leadership dashboard, distinct from any person's
+card. Nearly every sign already has a source in the one database:
+
+| Vital sign | Source | Status |
+|---|---|---|
+| 1. Online attendance | live-stream poller and "I'm here" taps (intranet), YouTube | partially flowing |
+| 2. In-person attendance | PCO Check-Ins, Sunday mode | lands with the PCO loop |
+| 3. Financial engagement | `giving_gifts`, **aggregate only**: totals, giver counts, recurring share. Never person-level in Harvest. | flowing now |
+| 4. Reach strategy | ads scoreboard (`meta_ad_insights`, `meta_leads`) | flowing now |
+| 5. Discipleship strategy | `gt_*`, future tracks, fleet movement | flowing now |
+| 6. Volunteer engagement | `pco_serving` | flowing now |
+| 7. Next step engagement | `pathway_sends`, `email_clicks`, Harvest stage moves | flowing now |
+
+Five of seven are measurable today; the dashboard's job is to put them on
+one screen with trend lines and let the Monday digest flag whichever sign
+moved most.
+
 ## The unfair advantage (why build instead of rent)
 
 One Supabase project already holds, or will after PR #8:
