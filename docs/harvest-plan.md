@@ -30,6 +30,33 @@ Ground rules, from experience:
 - **Giving data stays off lead cards entirely.** A guest's card shows their
   journey, never their money. God does the seeing.
 
+## The spine: five ships, one fleet
+
+The journey Harvest tracks, named the way PD will preach it. Everyone is on
+a ship; the house's job is to help them board the next one. Worship is not a
+stage; it is the water the whole fleet sails on.
+
+| Ship | Who is aboard | Boarding marker (data) | Automation posture |
+|---|---|---|---|
+| **Friendship** | First contact: the ad, the DM, the PMV form, the invited coworker | lead captured (`meta_leads` / `visit_plans`) | Heaviest: confirmations, reminders, re-invites. The machine's home turf. |
+| **Fellowship** | Showing up, coming back | attended recorded (Sunday mode, PCO Check-Ins) | Light: after-visit thank you, a return nudge, then hands off to humans. |
+| **Partnership** | Planted and committed to the house | Growth Track complete, covenant step taken, serving team joined. **Never a giving marker: a partner who gives quietly is seen by God, not by the software.** | Celebration sends only; enrollment into Discipleship invitations. |
+| **Discipleship** | Being formed | Charisma Track, mentoring, serving consistently | Minimal: scheduling help and human tasks. Formation is hand to hand. |
+| **Leadership** | Reproducing | Leader Track, leading a team or group | None toward the person; the system instead helps them start new Friendships. |
+
+The fleet loops: Leadership's assignment is new Friendships, which turns the
+journey from a pipe into an engine. People board at any ship (a transfer
+member enters at Partnership without ever seeing an ad), stall without
+falling off the map, and are never automated backward. The operational
+sub-stages below (Planned a Visit, Attended, No Show) live inside Friendship
+and Fellowship: the congregation hears ships, the staff screens keep the
+precision. Philippians 1:5 anchors the third ship: "your partnership in the
+gospel from the first day until now."
+
+The design rule across the fleet: **the machine walks people to the door;
+people walk people into the family.** Automation is dense at Friendship and
+thins to nothing by Leadership.
+
 ## The unfair advantage (why build instead of rent)
 
 One Supabase project already holds, or will after PR #8:
@@ -49,9 +76,10 @@ language, and every slice on one card.
 
 ## The product, screen by screen
 
-**1. The Board.** Columns are stages (Planned a Visit, Confirmed, Attended,
-No Show, Not Coming, Returned), same mental model the team already has from
-ChurchFunnels, so there is nothing to relearn. Cards carry name, the Sunday
+**1. The Board.** Columns are the working sub-stages of Friendship and
+Fellowship (Planned a Visit, Confirmed, Attended, No Show, Not Coming,
+Returned), same mental model the team already has from ChurchFunnels, so
+there is nothing to relearn. Cards carry name, the Sunday
 they planned, a source chip (which campaign), days in stage, and three
 one-tap actions: call, text, note. Web: drag cards between columns. Phone:
 one column at a time, swipe between stages, long-press to move a card via a
@@ -88,7 +116,9 @@ out; building the canvas first is how products spend six months shipping
 nothing.
 
 **5. The Dashboard.** The Ads to Seats page, live: spend to leads to arrived
-to seated to returned, per campaign, against the two-year baseline. The
+to seated to returned, per campaign, against the two-year baseline. Plus the
+fleet view: how many aboard each ship, and who moved up this month, the
+discipleship funnel no church software shows. The
 artifact built on 2026-08-12 is the prototype; here it reads the tables
 directly and updates itself.
 
