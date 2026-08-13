@@ -472,7 +472,7 @@ def main():
 
     # --- Write. Existing people keep their id and their ship if it is higher.
     existing = fetch_all("pursuit_people",
-                         "id,email,phone,pco_person_id,ship,pinned_by,state,deceased")
+                         "id,email,phone,pco_person_id,ship,pinned_by,pinned_at,state,deceased")
     by_email = {e["email"]: e for e in existing if e.get("email")}
     by_phone = {e["phone"]: e for e in existing if e.get("phone")}
     by_pco = {e["pco_person_id"]: e for e in existing if e.get("pco_person_id")}
@@ -487,6 +487,24 @@ def main():
         if prior:
             if prior.get("pinned_by"):
                 row["ship"] = prior["ship"]     # a human pin beats every rule
+                # The pin is also testimony. A human looked at this person and
+                # said "here". That beats a stale clock: the serving mirror
+                # misses whole teams, and without this a leader PD pinned
+                # yesterday can read inactive off a 2022 record date.
+                pin_ts = parse_when(prior.get("pinned_at"))
+                if pin_ts and pin_ts > (parse_when(row.get("last_signal_at")) or 0):
+                    row["last_signal_at"] = _dt.fromtimestamp(pin_ts, tz=_tz.utc).isoformat()
+                    row["last_signal_source"] = "pin"
+                    pin_age = (now.timestamp() - pin_ts) / DAY
+                    if pin_age > 730:
+                        row["state"] = "inactive"
+                    elif pin_age > 180:
+                        row["state"] = "dormant"
+                        row["dormant_since"] = _dt.fromtimestamp(
+                            pin_ts + 180 * DAY, tz=_tz.utc).isoformat()
+                    else:
+                        row["state"] = "active"
+                        row["dormant_since"] = None
             elif rank(prior["ship"]) > rank(row.get("ship")):
                 row["ship"] = prior["ship"]     # never demote
             if prior.get("state") == "archived":
