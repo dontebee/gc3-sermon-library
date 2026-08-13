@@ -31,19 +31,24 @@ def connected():
     return bool(META_TOKEN and AD_ACCOUNT)
 
 
-def meta_get(path_or_url, params=None):
+def meta_get(path_or_url, params=None, fatal=True):
     """GET from the Graph API with retry on throttling and server errors.
 
     Meta signals throttling as HTTP 400 with error codes 4, 17 or 32 rather
     than a clean 429, so the retry decision reads the error body, not just the
     status line. Code 190 is an invalid or expired token, which retrying will
     never fix, so it gets an explanation and a hard stop instead.
+
+    A caller may pass its own access_token in params (the lead mirror uses
+    per-page tokens); otherwise the system user token is used. fatal=False
+    returns None on a non-retryable failure instead of exiting, for jobs that
+    should degrade politely while permissions are still being set up.
     """
     url = path_or_url if path_or_url.startswith("http") else f"{GRAPH}/{path_or_url}"
     p = dict(params or {})
     if not path_or_url.startswith("http"):
-        # paging "next" URLs already carry the token; fresh paths need it added
-        p["access_token"] = META_TOKEN
+        # paging "next" URLs already carry the token; fresh paths need one added
+        p.setdefault("access_token", META_TOKEN)
     for attempt in range(5):
         r = requests.get(url, params=p, timeout=60)
         if r.status_code == 200:
@@ -58,7 +63,9 @@ def meta_get(path_or_url, params=None):
             print("User tokens expire about every 60 days. Generate a System User token")
             print("with ads_read (business.facebook.com > Business settings > Users >")
             print("System users) and update the META_ACCESS_TOKEN secret in Doppler.")
-            sys.exit(1)
+            if fatal:
+                sys.exit(1)
+            return None
         retryable = r.status_code == 429 or r.status_code >= 500 or code in (1, 2, 4, 17, 32, 613)
         if retryable and attempt < 4:
             wait = min(60, 10 * (attempt + 1))
@@ -66,19 +73,27 @@ def meta_get(path_or_url, params=None):
             time.sleep(wait)
             continue
         print(f"ERROR: Meta API call failed: HTTP {r.status_code} {r.text[:300]}")
-        sys.exit(1)
+        if fatal:
+            sys.exit(1)
+        return None
     return {}
 
 
-def meta_get_all(path, params):
-    """Follow Graph API pagination to the end."""
-    rows, data = [], meta_get(path, params)
+def meta_get_all(path, params, fatal=True):
+    """Follow Graph API pagination to the end. With fatal=False a failure on
+    any page returns None (not a partial list), so callers can tell a broken
+    call from an empty result."""
+    rows, data = [], meta_get(path, params, fatal=fatal)
+    if data is None:
+        return None
     while True:
         rows.extend(data.get("data", []))
         nxt = (data.get("paging") or {}).get("next")
         if not nxt:
             return rows
-        data = meta_get(nxt)
+        data = meta_get(nxt, fatal=fatal)
+        if data is None:
+            return None
 
 
 def account_info():

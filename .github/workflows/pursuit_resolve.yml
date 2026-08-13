@@ -1,0 +1,43 @@
+name: Pursuit identity resolution
+
+on:
+  schedule:
+    - cron: '0 11 * * *'   # daily at 11:00 UTC, ahead of the lead mirror
+                           # (13:30) and the digest (14:00), so the board is
+                           # current before anyone reads about it
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        # Defaults ON for manual runs, per house rule (see CLAUDE.md). Dry
+        # run reads every source and reports the counts without writing a
+        # single row, which is the safe way to see what a change would do.
+        description: 'Dry run (read and report, write nothing). Untick to write.'
+        type: boolean
+        default: true
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # Counts only in the log, and no artifact upload: names, emails and
+      # phone numbers belong in the database and nowhere else.
+      - name: Resolve people
+        env:
+          # Four spellings, two values, one Supabase project. gc3_env.py picks
+          # whichever is set, preferring the intranet's names, so Doppler only
+          # has to hold one of each.
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          DRY_RUN: ${{ inputs.dry_run && '1' || '' }}
+        run: python pursuit_resolve.py
