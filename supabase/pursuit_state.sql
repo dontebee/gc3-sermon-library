@@ -62,10 +62,12 @@ alter table pursuit_people
 alter table pursuit_people
   add column if not exists deceased boolean not null default false;
 
--- Rides alongside Fellowship. Attendance alone is not partnership, so
--- these people are named rather than promoted or forgotten. Changes no
--- ship, triggers nothing outward, produces a list a campus pastor can work
--- down on a Tuesday.
+-- Rides alongside Fellowship. A partner has given the house Time, Talent,
+-- or Treasure; attendance is none of the three, so these people are named
+-- rather than promoted or forgotten. faithful_unattached gives none of the
+-- three, half_attached gives one but stays under every Partnership bar.
+-- Changes no ship, triggers nothing outward, produces a list a campus
+-- pastor can work down on a Tuesday.
 alter table pursuit_people
   add column if not exists attach_flag text;
   -- faithful_unattached | half_attached | gave_once_stayed | kids_in_parents_out

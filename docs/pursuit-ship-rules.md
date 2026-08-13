@@ -141,49 +141,76 @@ demanding: **a number that large is meaningless without the state axis
 below.** "4,000 in Fellowship" says nothing. "4,000 in Fellowship, 1,100 of
 them active" is a report a pastor can actually act on.
 
-### Partnership: planted and committed
+### Partnership: Time, Talent, or Treasure
 
-| # | Rule | Source | Status |
-|---|---|---|---|
-| P1 | PCO membership status is Member or Partner | PCO People | PD |
-| P2 | Has a partnership date | PCO People | PD |
-| P3 | Gave 10+ times in 24 months | `giving_gifts` | PD, see above |
-| P4 | Their kids checked in 5+ times in 12 months | PCO Check-Ins + households | PD |
-| P5 | Served 2+ times in 90 days | PCO Serving | PD |
-| P6 | Finished Growth Track | `gt_progress` | built |
-| P7 | Belongs to a small group | PCO Groups | proposed |
-| P8 | Was baptized here | PCO, `salvation_decisions` | proposed |
+The house already had the words for this and I had been using five where
+three would do. **A partner has given the house Time, Talent, or Treasure.**
+
+Note the *or*. Any one of the three is enough. A widow who serves and cannot
+give is a partner. A man who gives faithfully and travels for work is a
+partner. The triad is deliberately generous about which one, and completely
+unbending about whether there is one at all.
+
+| # | Rule | Gives | Source | Status |
+|---|---|---|---|---|
+| P1 | PCO membership status is Member or Partner | the promise | PCO People | PD |
+| P2 | Has a partnership date | the promise | PCO People | PD |
+| P3 | Gave 10+ times in 24 months | **Treasure** | `giving_gifts` | PD |
+| P4 | Their kids checked in 5+ times in 12 months | **Time** | PCO Check-Ins + households | PD |
+| P5 | Served 2+ times in 90 days | **Time and Talent** | PCO Serving | PD |
+| P6 | Finished Growth Track | **Time** | `gt_progress` | built |
+| P7 | Belongs to a small group | **Time** | PCO Groups | proposed |
+| P8 | Was baptized here | the promise | PCO, `salvation_decisions` | proposed |
+
+**A public commitment is the promise of the three, which is why it counts
+on its own.** A partnership date, a membership status, a baptism: none of
+those is Time, Talent, or Treasure by itself. Each is a person saying "I am
+in" before the evidence has had time to accumulate. The house takes people
+at their word, so P1, P2 and P8 stand as rules rather than waiting for
+proof. That is the right posture, and it is worth knowing it is a choice.
 
 **Attendance alone is not partnership.** PD's ruling, and it is the right
-one: somebody who attends and never gives, never serves, never commits has
-not partnered with the house. They have received from it. An earlier draft
-of this document proposed making twelve visits a year enough on its own.
-That rule is withdrawn.
+one: somebody who attends and gives none of the three has received from the
+house, not partnered with it. An earlier draft proposed making twelve
+visits a year enough on its own. That rule is withdrawn. Presence by itself
+only ever receives, and calling it partnership would flatter a number at
+the cost of the word. Philippians 1:5 is *koinonia*, participation, not
+attendance.
 
-The principle underneath every rule in this section: **a partner has given
-the house something.** Money, time, a public commitment, their own
-formation, or their children's. Presence by itself only ever receives, and
-calling that partnership would flatter a number at the cost of the word.
-Philippians 1:5 is *koinonia*, participation, not attendance.
+**Where the triad and the data disagree.** Worth naming so nobody later
+invents a number to paper over it: the house has three words, and the
+tables have two signals plus a promise. Treasure is well covered by giving.
+Time shows up in four places. **Talent has no signal of its own.** It is
+only ever visible through serving, which is why P5 carries both. PCO can
+hold skills on a person's profile, and until that is synced the resolver
+cannot tell the difference between somebody stacking chairs and somebody
+running front of house. Both are partnership, so no rule is wrong today.
+But the house cannot yet ask "who has a gift we are not using", which is
+the question Talent exists to answer.
 
 ### The list that ruling creates
 
 Withdrawing the attendance rule does not throw those people away. It names
-them, which is the more useful thing. A flag rides alongside Fellowship:
+them, which is the more useful thing. A flag rides alongside Fellowship,
+and the triad is what each flag counts:
 
 | # | Flag | Meaning |
 |---|---|---|
-| A1 | **Faithful, unattached** | 12+ check-ins in 12 months, no giving, no serving, no group, no Growth Track |
-| A2 | **Half attached** | Regular attendance plus exactly one of giving, serving, or a group, but under every Partnership bar |
+| A1 | **Faithful, unattached** | Attends regularly. **None of the three.** |
+| A2 | **Half attached** | Attends regularly, gives **one of the three**, under every Partnership bar |
 | A3 | **Gave once, stayed** | A single gift, still attending, never repeated |
 | A4 | **Kids in, parents out** | Children check in regularly, no adult signal in the household |
 
-A1 is the one PD actually asked for. These are the people who show up more
-faithfully than most partners and have never been asked for anything. On the
-old draft they would have been quietly counted as partners and never spoken
-to again. Named honestly, they are the shortest path the house has to more
-partners: they already come, they already like it here, nobody has invited
-them into it.
+A1 is the one PD actually asked for, and in the triad it reads sharply:
+these are people who show up more faithfully than some partners and have
+been asked for none of the three. On the old draft they would have been
+quietly counted as partners and never spoken to again. Named honestly, they
+are the shortest path the house has to more partners. They already come,
+they already like it here, nobody has invited them into it.
+
+A2 is the near miss, and it is the better list to work first. Somebody
+already giving one of the three has answered the hard question. Asking for
+a second is a smaller ask than asking a stranger for a first.
 
 A4 is worth its own line because it is the most common quiet miss in a
 church with a strong kids ministry. The household is attending. The adults
@@ -258,6 +285,13 @@ badge in reads as gone. **The livestream tap keeps online people active**,
 or the household in another state who watches every week and gives nothing
 gets filed as lapsed. Online Attendance is one of the seven vital signs; it
 should not be invisible to the clock that decides who is still here.
+
+**This list is wider than the triad on purpose.** Attendance is a signal
+and it is not Time, Talent, or Treasure. That is not an inconsistency, it
+is the whole design: the signal list answers *are they still here*, and the
+triad answers *have they partnered*. Somebody can be fully Active and give
+none of the three, which is exactly the A1 flag above. Collapsing the two
+questions into one is what produced the withdrawn attendance rule.
 
 ### The four states
 
@@ -396,3 +430,7 @@ only in Pursuit.
    something stricter like two a month for three months running?
 9. Where does the house record a death today? Nothing in this system is
    trustworthy on that point until there is one source it can read.
+10. Talent has no signal of its own, only serving. Does the house want to
+    record gifts and skills in PCO so the resolver can tell stacking chairs
+    from running front of house, and so somebody can ask who has a gift we
+    are not using?
