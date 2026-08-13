@@ -27,31 +27,34 @@ households) and a **PCO Check-Ins sync** (attendance, the single most
 important missing signal). Both belong in the data plane, next to the
 giving sync that already runs.
 
-## The giving question, stated plainly
+## Seeing and announcing are different things
 
-PD's rule 3 places someone on Partnership after 10 gifts in 2 years. Every
-other document in this system says giving never touches Pursuit. That rule
-was written after 2026-08-05, when a job read the giving table and mailed 30
-donors an invitation nobody approved.
+PD's ruling: **nothing is untouchable. The system may see everything. It
+just does not announce it.**
 
-The distinction worth keeping is not "giving is untouchable" but **what
-giving is allowed to do**:
+That settles a question this project had been answering too bluntly. The
+2026-08-05 incident was never really about a job *reading* the giving
+table. It was about a job that read it and then **acted outward**, mailing
+30 donors an invitation triggered by their generosity, with no switch and no
+unsubscribe. The sin was the announcement, not the sight.
 
-- **Allowed (PD's call):** giving *frequency* as one signal among several
-  that a person is planted. Somebody who has given consistently for two
-  years is committed to the house, and pretending the house cannot see that
-  is its own kind of dishonesty.
-- **Still forbidden:** amounts anywhere near a card, giving as a reason a
-  staff member can read as money, ranking people by generosity, and any
-  member-facing message triggered by giving. Those remain the Pathways
-  engine's business, with its switch and its suppression list.
+So the line moves to where it always belonged:
 
-**The safeguard:** a giving-derived placement stores its reason as
-`committed_giving` and the card renders it as "a committed partner". No
-count, no amount, no date. A greeter reading a card learns that somebody is
-planted, never what they put in the plate. If that is still too close, the
-rule can be dropped and the other Partnership signals carry it: with the
-PCO membership sync in place, most of those 458 will qualify anyway.
+- **The resolver sees everything.** Giving frequency, recency, consistency,
+  attendance, serving, every signal the house has. It needs all of it to
+  answer "who is who" honestly.
+- **The interface is discreet.** Amounts never render on a card. A
+  giving-derived reason reads as "gives consistently", not a number, and
+  full detail is gated to leadership roles rather than shown to whoever is
+  holding a phone at the welcome desk.
+- **Nothing outward is ever triggered by giving.** No email, no text, no
+  pathway enrolment keyed to what somebody put in the plate. That remains
+  the Pathways engine's business, with its switch and its suppression list,
+  and it is the one part of the old rule that stays absolute.
+
+A useful test for any future feature: *would this embarrass the person if
+they saw it over a shoulder?* Seeing that somebody is a faithful partner
+passes. Seeing what they gave, in a lobby, does not.
 
 ## Precedence and mechanics
 
@@ -148,13 +151,47 @@ them seen this year" is a report a pastor can actually act on.
 | P4 | Their kids checked in 5+ times in 12 months | PCO Check-Ins + households | PD |
 | P5 | Served 2+ times in 90 days | PCO Serving | PD |
 | P6 | Finished Growth Track | `gt_progress` | built |
-| P7 | Attended 12+ times in 12 months without formal membership | PCO Check-Ins | proposed |
-| P8 | Belongs to a small group | PCO Groups | proposed |
-| P9 | Was baptized here | PCO, `salvation_decisions` | proposed |
+| P7 | Belongs to a small group | PCO Groups | proposed |
+| P8 | Was baptized here | PCO, `salvation_decisions` | proposed |
 
-P7 is the one most churches miss: the family who has been in the third row
-for a year and never signed anything. They are partners in everything but
-paperwork, and the house should treat them that way.
+**Attendance alone is not partnership.** PD's ruling, and it is the right
+one: somebody who attends and never gives, never serves, never commits has
+not partnered with the house. They have received from it. An earlier draft
+of this document proposed making twelve visits a year enough on its own.
+That rule is withdrawn.
+
+The principle underneath every rule in this section: **a partner has given
+the house something.** Money, time, a public commitment, their own
+formation, or their children's. Presence by itself only ever receives, and
+calling that partnership would flatter a number at the cost of the word.
+Philippians 1:5 is *koinonia*, participation, not attendance.
+
+### The list that ruling creates
+
+Withdrawing the attendance rule does not throw those people away. It names
+them, which is the more useful thing. A flag rides alongside Fellowship:
+
+| # | Flag | Meaning |
+|---|---|---|
+| A1 | **Faithful, unattached** | 12+ check-ins in 12 months, no giving, no serving, no group, no Growth Track |
+| A2 | **Half attached** | Regular attendance plus exactly one of giving, serving, or a group, but under every Partnership bar |
+| A3 | **Gave once, stayed** | A single gift, still attending, never repeated |
+| A4 | **Kids in, parents out** | Children check in regularly, no adult signal in the household |
+
+A1 is the one PD actually asked for. These are the people who show up more
+faithfully than most partners and have never been asked for anything. On the
+old draft they would have been quietly counted as partners and never spoken
+to again. Named honestly, they are the shortest path the house has to more
+partners: they already come, they already like it here, nobody has invited
+them into it.
+
+A4 is worth its own line because it is the most common quiet miss in a
+church with a strong kids ministry. The household is attending. The adults
+are invisible to every rule the house has.
+
+These flags never change a ship and never trigger anything outward. They
+produce a list a campus pastor can work down on a Tuesday, which is the
+whole point.
 
 ### Discipleship: being formed
 
@@ -218,18 +255,22 @@ of the house arrive in the same glance.
 2. **PCO Check-Ins sync**: attendance. Nine of the rules above are dark
    without it, including every Fellowship rule.
 3. **PCO Groups sync**: membership and leadership of small groups.
-4. **Giving frequency read**: counts only, never amounts, behind PD's
-   decision above.
+4. **Giving frequency read**: the resolver reads it all; the card renders
+   "gives consistently" and never a number.
 5. **Rule engine**: evaluate all rules per person, take the highest ship,
-   store the reasons, respect manual pins, set dormancy.
+   store the reasons, respect manual pins, set dormancy, set the A flags.
 6. **Charisma Track and mentoring**: no data source exists yet. Until one
    does, D1 and D7 need a manual flag, which is the honest answer rather
    than a guess.
 
 ## The open questions only PD can answer
 
-1. Does the giving-frequency rule stand, with the never-display safeguard?
-2. Is P7 (12+ visits, no membership) right at twelve, or should it be more?
+1. ~~Does the giving-frequency rule stand?~~ **Answered: yes.** The resolver
+   sees everything; the interface stays discreet; nothing outward is ever
+   triggered by giving.
+2. ~~Is attendance alone enough for Partnership?~~ **Answered: no.** A
+   partner has given the house something. Attendance without it becomes the
+   A1 flag, not a ship.
 3. ~~Should a bare PCO record appear on the board?~~ **Answered: yes, and it
    is Fellowship.** A Planning Center record is the border between the first
    two ships.
@@ -237,3 +278,5 @@ of the house arrive in the same glance.
    year (say ten months, which survives a summer away) truer?
 5. Where does Charisma Track live, and can the resolver read it?
 6. Who may pin a person's ship by hand?
+7. What counts as "regular" for the A1 flag: twelve check-ins in a year, or
+   something stricter like two a month for three months running?
