@@ -38,6 +38,15 @@ Trello. Making it look like Trello is not the prize, and Pursuit already
 has its own face**, the sea room and the ship ramp, which is the house's
 and validated. Steal the grammar, not the costume.
 
+That said, PD sent the screenshots, and they name a *structure* worth
+taking apart from any brand: an ambient colored backdrop, soft
+low-contrast columns floating on it, and bright white cards on top, so
+the eye gets three clean layers of depth and the cards read as the
+brightest thing on the screen. Pursuit's sea room already wants to be
+that backdrop. The concrete adoption: board background in the house's
+deep ship blues, columns as translucent panels over it, cards white and
+lifted. Trello's layering, the house's water.
+
 ## What maps straight across
 
 ### 1. The card front, upgraded to a dossier
@@ -132,8 +141,27 @@ as touches so they carry who and when. A board where anyone can invent
 labels becomes a board nobody can read.
 
 **No public boards, no sharing, no covers pulled from social media.**
-Access stays role-gated as built. Avatars stay initials until a PCO
-photo sync is deliberately decided.
+Access stays role-gated as built.
+
+**Photos: decided.** PD ruled the faces go on the cards, from Planning
+Center. The People API carries an `avatar` URL per person on PCO's CDN,
+so the photos arrive free with the People sync that is already first on
+the build list. `avatar_url` and `is_child` are on `pursuit_people` now,
+waiting for it. Three lines the interface holds:
+
+- **Initials remain the fallback**, when there is no photo and when the
+  image fails to load, so the board never shows a broken face.
+- **Children's photos never render.** Kids do not board ships in the
+  first place, and `is_child` makes the guarantee explicit even if a
+  child record ever gained a card.
+- **Photos live only inside the role-gated tool.** These are the same
+  faces staff already see in PCO itself, going nowhere new.
+
+**The ship-drag pin is confirmed.** PD's words: a real person knows
+better than a rule. Dragging a person to another ship offers the pin,
+records who and when, and the resolver stands down for that person. The
+confirm dialog stays, because a solemn gesture should cost one
+deliberate tap.
 
 ## The build, phased
 
