@@ -332,6 +332,26 @@ def main():
         else:
             inserts.append(row)
 
+    # Two registry people can resolve to the SAME existing row: the roster
+    # matched it by PCO id while Growth Track matched it by email, and the
+    # registry had no key connecting them. Postgres refuses a batch that
+    # touches one row twice (21000), and it is right to: merge them here,
+    # fill blanks, keep the furthest ship, and the write is one row again.
+    merged: dict[str, dict] = {}
+    for row in updates:
+        prev = merged.get(row["id"])
+        if prev is None:
+            merged[row["id"]] = row
+            continue
+        for k, v in row.items():
+            if v is not None and not prev.get(k):
+                prev[k] = v
+        if rank(row.get("ship")) > rank(prev.get("ship")):
+            prev["ship"] = row["ship"]
+    if len(merged) < len(updates):
+        print(f"  merged {len(updates) - len(merged)} update(s) aimed at the same person.")
+    updates = list(merged.values())
+
     for start in range(0, len(inserts), 500):
         sb.table("pursuit_people").insert(inserts[start:start + 500]).execute()
     for start in range(0, len(updates), 500):
