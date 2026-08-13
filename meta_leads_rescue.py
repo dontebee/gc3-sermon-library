@@ -91,12 +91,29 @@ def upsert(rows):
             rows[start:start + 500], on_conflict="leadgen_id").execute()
 
 
+def known_lead_ids():
+    """Every leadgen_id already mirrored, so a run can tell new from seen.
+    The mirror runs every fifteen minutes now, and speed to first touch only
+    matters for the leads that were not there fifteen minutes ago."""
+    ids, start = set(), 0
+    while True:
+        batch = (sb.table("meta_leads").select("leadgen_id")
+                 .range(start, start + 999).execute().data or [])
+        ids.update(r["leadgen_id"] for r in batch)
+        if len(batch) < 1000:
+            return ids
+        start += 1000
+
+
 def main():
     now = datetime.now(timezone.utc)
     print(f"Meta lead mirror starting ({'DRY RUN' if DRY_RUN else 'live'}), {now:%Y-%m-%d %H:%M} UTC")
     if not connected():
         print("Not connected: add the META_ACCESS_TOKEN secret (see the README) and rerun.")
         return
+
+    known = set() if DRY_RUN else known_lead_ids()
+    fresh = 0
 
     pages = meta_get_all("me/accounts", {"fields": "id,name,access_token", "limit": 100},
                          fatal=False)
@@ -167,6 +184,7 @@ def main():
                 print("Has supabase/meta_leads_schema.sql been applied to the project?")
                 sys.exit(1)
             total += len(rows)
+            fresh += sum(1 for r in rows if r["leadgen_id"] not in known)
             # Counts only. Never print lead fields: logs are not a safe place
             # for names, emails or phone numbers.
             by_form.append((form.get("name") or form.get("id"), form.get("status"), len(rows)))
@@ -181,6 +199,14 @@ def main():
             print(f"  {month}: {by_month[month]}")
     print()
     print(f"Done. {total} lead(s) {'counted' if DRY_RUN else 'mirrored into meta_leads'}.")
+    if not DRY_RUN:
+        print(f"New this run: {fresh}.")
+        if fresh:
+            # The workflow sees this file and runs the resolver immediately,
+            # so a hand raised on Facebook is a card on the Board within the
+            # quarter hour, not tomorrow.
+            with open(".new_leads", "w", encoding="utf-8") as f:
+                f.write(str(fresh))
     print("Compare the recent months against contacts created in ChurchFunnels in the")
     print("same window: the difference is the leak, measured.")
 
