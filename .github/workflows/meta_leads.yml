@@ -2,18 +2,20 @@ name: Meta lead mirror
 
 on:
   schedule:
-    - cron: '30 13 * * *'   # daily at 13:30 UTC, between the Monday sermon
-                            # pull (13:00) and the engagement run (14:00).
-                            # Daily because this is the backstop pipe: Meta
-                            # deletes instant-form leads after 90 days, and
-                            # the ChurchFunnels integration has leaked before.
+    - cron: '*/15 * * * *'  # every quarter hour. A guest who raises a hand
+                            # on Facebook should be a card on the Board in
+                            # minutes, not tomorrow: speed to first touch is
+                            # the one thing the follow-up vendors sell that
+                            # the house did not already have. Meta reads are
+                            # cheap at church scale, and when there is
+                            # nothing new the run touches nothing.
   workflow_dispatch:
     inputs:
       dry_run:
         # Defaults ON for manual runs, per house rule (see CLAUDE.md). Read
         # -only against Meta either way; dry run also skips the Supabase
-        # writes. Untick it deliberately to mirror for real. The daily
-        # schedule is unaffected: inputs do not apply to it.
+        # writes. Untick it deliberately to mirror for real. The schedule is
+        # unaffected: inputs do not apply to it.
         description: 'Dry run (fetch and count, write nothing). Untick to mirror for real.'
         type: boolean
         default: true
@@ -52,3 +54,17 @@ jobs:
           META_AD_ACCOUNT_ID: ${{ secrets.META_AD_ACCOUNT_ID }}
           DRY_RUN: ${{ inputs.dry_run && '1' || '' }}
         run: python meta_leads_rescue.py
+
+      # The fast lane. The mirror leaves .new_leads only when this run found
+      # leads it had never seen, and only then is the full resolver worth
+      # running: it boards the new arrivals and places their cards, and the
+      # board is current within the quarter hour. The nightly 11:00 resolve
+      # stays as the full backstop pass.
+      - name: Board the new arrivals
+        if: ${{ hashFiles('.new_leads') != '' }}
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: python pursuit_resolve.py
