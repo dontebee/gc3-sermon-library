@@ -1,8 +1,11 @@
-# Harvest: the GC3 lead tracker
+# Pursuit: the GC3 lead tracker
 
-*A plan for the build PD asked for: "the ultimate lead tracker." Working name
-Harvest, from Luke 10:2, because the whole product exists for the gap between
-"the harvest is plentiful" and "the workers are few." Rename at will.*
+*The build PD asked for: "the ultimate lead tracker." Named Pursuit, because
+GodChasers is a church named after pursuit, and the tool is where the house
+chases people the way its people chase God. Cornerstone verse, Philippians
+3:12: "I press on to take hold of that for which Christ Jesus took hold of
+me." Tagline: because He chased us first. The kanban screen inside it is the
+Board; in hallway speech, the Pursuit Board.*
 
 *Status: plan only. The data plane it stands on (lead mirror, ads scoreboard,
 attribution tables) is built or in PR #8; the app itself is not started.*
@@ -21,9 +24,9 @@ Ground rules, from experience:
 
 - **UI first, mobile first.** Staff live on phones. Every screen designs for
   a thumb before a mouse.
-- **ChurchFunnels stays on until Harvest reaches parity.** No gap like
+- **ChurchFunnels stays on until Pursuit reaches parity.** No gap like
   October 2025 ever again. The lead mirror feeds both during the transition.
-- **Harvest never sends member email itself.** Its automations orchestrate
+- **Pursuit never sends member email itself.** Its automations orchestrate
   the Pathways engine, which already has the on and off switch, the shared
   suppression list, unsubscribe links, and the admin page. The 2026-08-05
   lesson is structural: one sender in the house, ever.
@@ -32,7 +35,7 @@ Ground rules, from experience:
 
 ## The spine: five ships, one fleet
 
-The journey Harvest tracks, named the way PD will preach it. Everyone is on
+The journey Pursuit tracks, named the way PD will preach it. Everyone is on
 a ship; the house's job is to help them board the next one. Worship is not a
 stage; it is the water the whole fleet sails on.
 
@@ -68,11 +71,11 @@ the discipline is that each stays with its audience:
   Attract fills Friendship, Attach builds Fellowship, Align forges
   Partnership, and Adore is the deep water that carries Discipleship and
   Leadership. Staff language; each verb names a strategy playbook in
-  Harvest.
+  Pursuit.
 - **Attendance, Attention, Agreement, Allegiance** are the observable
   signals that someone may be ready for the next ship: they show up, they
   lean in, they buy the vision, they give their life to it. The software's
-  language: Harvest reads them from attendance records, opens and clicks,
+  language: Pursuit reads them from attendance records, opens and clicks,
   Growth Track enrollment, and serving commitment, and surfaces "may be
   ready" prompts to a human. Signals suggest; people invite.
 
@@ -85,11 +88,11 @@ card. Nearly every sign already has a source in the one database:
 |---|---|---|
 | 1. Online attendance | live-stream poller and "I'm here" taps (intranet), YouTube | partially flowing |
 | 2. In-person attendance | PCO Check-Ins, Sunday mode | lands with the PCO loop |
-| 3. Financial engagement | `giving_gifts`, **aggregate only**: totals, giver counts, recurring share. Never person-level in Harvest. | flowing now |
+| 3. Financial engagement | `giving_gifts`, **aggregate only**: totals, giver counts, recurring share. Never person-level in Pursuit. | flowing now |
 | 4. Reach strategy | ads scoreboard (`meta_ad_insights`, `meta_leads`) | flowing now |
 | 5. Discipleship strategy | `gt_*`, future tracks, fleet movement | flowing now |
 | 6. Volunteer engagement | `pco_serving` | flowing now |
-| 7. Next step engagement | `pathway_sends`, `email_clicks`, Harvest stage moves | flowing now |
+| 7. Next step engagement | `pathway_sends`, `email_clicks`, Pursuit stage moves | flowing now |
 
 Five of seven are measurable today; the dashboard's job is to put them on
 one screen with trend lines and let the Monday digest flag whichever sign
@@ -178,7 +181,7 @@ flowchart LR
         E[("people + visit_plans<br/>stages, journeys")]
         F[("pathway_* tables")]
     end
-    subgraph APP ["gc3-intranet (Harvest UI + Pathways engine)"]
+    subgraph APP ["gc3-intranet (Pursuit UI + Pathways engine)"]
         G["Board / Person card / Sunday mode"]
         H["Strategies editor"]
         I["Live dashboard"]
@@ -197,12 +200,12 @@ flowchart LR
 
 - **App:** a section of gc3-intranet (Next.js), because auth, roles
   (`roles`, `user_roles`), profiles, and the Pathways engine already live
-  there. Harvest is routes and components, not a new deployment.
+  there. Pursuit is routes and components, not a new deployment.
 - **Drag and drop:** dnd-kit for the board (small, accessible, touch-solid).
   React Flow for the version-two canvas.
 - **Realtime:** Supabase realtime on the cards table.
 - **Roles:** staff see the board; greeters see Sunday mode only; giving data
-  appears nowhere in Harvest.
+  appears nowhere in Pursuit.
 - **This repo stays the data plane:** mirrors, scoreboard, reconciler,
   digest. No UI here, no email to members here, same as always.
 
@@ -225,7 +228,7 @@ flowchart LR
 **Phase A, see everything (fast):** the `people` spine, the Board and Person
 card read-only over existing data (mirror, opportunities import, pathway
 sends), plus the live dashboard route. No writes yet: the team looks at
-Harvest next to ChurchFunnels and feels the difference.
+Pursuit next to ChurchFunnels and feels the difference.
 
 **Phase B, work the board:** drag to move stages, notes, touches, tasks,
 Sunday mode with the big button. ChurchFunnels becomes the backup nobody
@@ -241,12 +244,11 @@ PCO auto-reconcile if not already landed, ManyChat front door if wanted.
 
 **Cutover:** when B is stable and C covers the active sequences, export the
 final ChurchFunnels state, import, point the lead mirror's downstream at
-Harvest alone, and the subscription ends. Not before.
+Pursuit alone, and the subscription ends. Not before.
 
 ## What this needs decided (PD)
 
-1. A yes to the shape, and a name (Harvest is a placeholder with a verse
-   behind it).
+1. A yes to the shape. The name is settled: Pursuit.
 2. Who the users are for Phase A (PD plus who else, and what a greeter may
    see).
 3. Attach the gc3-intranet repository to a working session so Phase A can
@@ -257,5 +259,5 @@ Harvest alone, and the subscription ends. Not before.
 
 Creative Church Marketing keeps running ads into the same instant forms. The
 mirror keeps catching every lead daily. The Monday digest keeps arriving.
-ChurchFunnels keeps working the whole time. Harvest replaces the window, not
+ChurchFunnels keeps working the whole time. Pursuit replaces the window, not
 the plumbing, and the plumbing is already the house's.
