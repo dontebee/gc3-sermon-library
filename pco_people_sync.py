@@ -72,6 +72,20 @@ def pco_get(path, params=None):
     return r.json()
 
 
+def real_avatar(url):
+    """PCO hands every person an avatar URL, including the people who never
+    uploaded a photo: those get a default silhouette or an initials tile.
+    The dry run proved it, 12,848 avatars for 12,848 people. A default is
+    not a face; store null and let the board draw its own initials."""
+    u = (url or "").strip()
+    if not u:
+        return None
+    low = u.lower()
+    if "no_photo" in low or "/initials/" in low or "static" in low:
+        return None
+    return u
+
+
 def pick_contact(person, included, rel_name, attr_name):
     """The primary email address or phone number, else the first on file.
 
@@ -124,7 +138,8 @@ def main():
 
             total += 1
             children += 1 if is_child else 0
-            with_avatar += 1 if a.get("avatar") else 0
+            avatar = real_avatar(a.get("avatar"))
+            with_avatar += 1 if avatar else 0
             with_email += 1 if email else 0
             if membership:
                 memberships[membership] = memberships.get(membership, 0) + 1
@@ -139,7 +154,7 @@ def main():
                 "membership": membership,
                 "pco_status": a.get("status"),
                 "child": is_child,
-                "avatar_url": a.get("avatar"),
+                "avatar_url": avatar,
                 "household_id": households[0]["id"] if households else None,
                 "pco_created_at": a.get("created_at"),
                 "pco_updated_at": a.get("updated_at"),
