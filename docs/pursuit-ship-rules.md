@@ -151,16 +151,58 @@ give is a partner. A man who gives faithfully and travels for work is a
 partner. The triad is deliberately generous about which one, and completely
 unbending about whether there is one at all.
 
+**Time** is showing up: registering kids, signing up for an event and
+coming, saying "I will be there" and being there.
+**Talent** is service to the house: serving teams.
+**Treasure** is giving.
+
 | # | Rule | Gives | Source | Status |
 |---|---|---|---|---|
 | P1 | PCO membership status is Member or Partner | the promise | PCO People | PD |
 | P2 | Has a partnership date | the promise | PCO People | PD |
 | P3 | Gave 10+ times in 24 months | **Treasure** | `giving_gifts` | PD |
 | P4 | Their kids checked in 5+ times in 12 months | **Time** | PCO Check-Ins + households | PD |
-| P5 | Served 2+ times in 90 days | **Time and Talent** | PCO Serving | PD |
+| P5 | Served 2+ times in 90 days | **Talent** | PCO Serving | PD |
 | P6 | Finished Growth Track | **Time** | `gt_progress` | built |
 | P7 | Belongs to a small group | **Time** | PCO Groups | proposed |
 | P8 | Was baptized here | the promise | PCO, `salvation_decisions` | proposed |
+| P9 | Registered for and attended 3+ things in 12 months | **Time** | PCO Registrations + Check-Ins | proposed |
+
+### The bit where Time and the attendance ruling collide
+
+Time being "showing up" runs straight into the earlier ruling that
+attendance alone is not partnership. Both cannot be true as stated, so here
+is the line, and it is worth checking because everything downstream sits on
+it.
+
+**Time is showing up when you said you would.** The gift is not the body in
+the seat, it is that the house could count on it in advance. Registering
+your kids, signing up for an event and coming, RSVPing a work day, taking a
+Growth Track seat for six weeks, being in a group that meets Tuesdays:
+somebody was planning around you, and you honoured it.
+
+**Sitting in a service having promised nothing is receiving.** Nobody
+counted on it, nothing was bound, and the person can stop tomorrow without
+anything falling over. That is the whole of the withdrawn twelve-visits
+rule, and it stays withdrawn.
+
+Look at PD's own examples and the line is already there: *registering* kids,
+*signing up* for events, *saying I will be there*. Three of the four are
+commitments made in advance. Only the bare check-in is not, and it is the
+only one that fails.
+
+So the triad does not soften the attendance ruling, it explains it. And it
+corrects an error in the previous draft, which had P4 filed under a vaguer
+heading: bringing your children week after week is one of the largest gifts
+of Time the house receives, and it is Time precisely because it is a
+standing commitment rather than a passing visit.
+
+**Each currency has a bar, and that is a separate question from which
+currency.** One gift of twenty dollars is not Treasure; ten gifts in two
+years is. Showing up to one thing is not Time; showing up to what you
+signed up for, repeatedly, is. The triad names the three ways in. The
+thresholds are what separate a partner from a receiver, and they belong to
+PD.
 
 **A public commitment is the promise of the three, which is why it counts
 on its own.** A partnership date, a membership status, a baptism: none of
@@ -177,16 +219,19 @@ only ever receives, and calling it partnership would flatter a number at
 the cost of the word. Philippians 1:5 is *koinonia*, participation, not
 attendance.
 
-**Where the triad and the data disagree.** Worth naming so nobody later
-invents a number to paper over it: the house has three words, and the
-tables have two signals plus a promise. Treasure is well covered by giving.
-Time shows up in four places. **Talent has no signal of its own.** It is
-only ever visible through serving, which is why P5 carries both. PCO can
-hold skills on a person's profile, and until that is synced the resolver
-cannot tell the difference between somebody stacking chairs and somebody
-running front of house. Both are partnership, so no rule is wrong today.
-But the house cannot yet ask "who has a gift we are not using", which is
-the question Talent exists to answer.
+**A gap the previous draft invented, now closed.** That draft claimed
+Talent had no signal of its own. That was an artefact of a wrong mapping,
+not a real hole: **serving is the Talent signal**, cleanly, and the house
+has it. Treasure is giving, Time is committed showing up, Talent is
+serving. All three are covered.
+
+What remains is smaller and worth keeping in view. The house knows *who*
+serves; it does not know *what they are good at*. PCO can hold skills on a
+person's profile and nothing syncs them, so the resolver cannot tell
+stacking chairs from running front of house. That is no longer a
+classification problem, because both are Talent and both are partnership.
+It is a deployment problem: nobody can ask "who has a gift we are not
+using", which is the question a serving director actually needs.
 
 ### The list that ruling creates
 
@@ -196,8 +241,8 @@ and the triad is what each flag counts:
 
 | # | Flag | Meaning |
 |---|---|---|
-| A1 | **Faithful, unattached** | Attends regularly. **None of the three.** |
-| A2 | **Half attached** | Attends regularly, gives **one of the three**, under every Partnership bar |
+| A1 | **Faithful, unattached** | Comes most weeks. Never registered, never signed up, never served, never gave. **None of the three.** |
+| A2 | **Half attached** | Gives **one of the three** but stays under its bar |
 | A3 | **Gave once, stayed** | A single gift, still attending, never repeated |
 | A4 | **Kids in, parents out** | Children check in regularly, no adult signal in the household |
 
@@ -286,12 +331,17 @@ or the household in another state who watches every week and gives nothing
 gets filed as lapsed. Online Attendance is one of the seven vital signs; it
 should not be invisible to the clock that decides who is still here.
 
-**This list is wider than the triad on purpose.** Attendance is a signal
-and it is not Time, Talent, or Treasure. That is not an inconsistency, it
-is the whole design: the signal list answers *are they still here*, and the
-triad answers *have they partnered*. Somebody can be fully Active and give
-none of the three, which is exactly the A1 flag above. Collapsing the two
-questions into one is what produced the withdrawn attendance rule.
+**This list is wider than the triad, and by exactly one thing.** Most of
+what is above is the triad: registrations and Growth Track are Time,
+serving is Talent, gifts are Treasure, a kid's check-in is the household's
+Time. The bare check-in is the exception, and it is the whole exception.
+
+That is not an inconsistency, it is the design. The signal list answers
+*are they still here*. The triad answers *have they partnered*. A person
+who slips into the back row every Sunday and promises nothing is fully
+Active and gives none of the three, which is exactly the A1 flag. Keeping
+the two questions apart is what makes that flag possible; collapsing them
+is what produced the withdrawn attendance rule.
 
 ### The four states
 
@@ -430,7 +480,10 @@ only in Pursuit.
    something stricter like two a month for three months running?
 9. Where does the house record a death today? Nothing in this system is
    trustworthy on that point until there is one source it can read.
-10. Talent has no signal of its own, only serving. Does the house want to
-    record gifts and skills in PCO so the resolver can tell stacking chairs
-    from running front of house, and so somebody can ask who has a gift we
-    are not using?
+10. **What is the bar for Time?** Treasure has one (10 gifts in 24 months)
+    and Talent has one (2 serves in 90 days). Time has none yet. P9
+    proposes three registered-and-attended things in twelve months, which
+    is a guess and should be PD's number.
+11. Does the house want gifts and skills recorded in PCO? Not needed to
+    classify anybody, since serving already proves Talent. Needed to ask
+    who has a gift the house is not using.
