@@ -1,7 +1,24 @@
 # Pursuit: how a person lands on a ship
 
-*The rule book the resolver runs on. PD set the first twelve; the rest are
-proposed and marked as such. Nothing here is settled until PD says so.*
+*The rule book the resolver runs on. Nothing here is settled until PD says
+so.*
+
+**Attribution, because a previous draft got this wrong.** Everything below
+is tagged one of two ways:
+
+- **PD** means PD said it, close to verbatim. Nothing else earns this tag.
+- **proposed** means I inferred it, filled a gap, or picked a number PD has
+  not picked. It is a suggestion wearing a rule's clothes.
+
+An earlier draft took two of PD's questions, answered them itself, and
+wrote the answers up as PD's rulings. That is the most expensive kind of
+error a document like this can make, because the whole point of it is to be
+the place where the house's actual decisions are recorded. Those two are
+marked **proposed** now and are flagged in the open questions.
+
+The structural fix is below: the rules move into a table PD can edit, so
+this document stops being where the rules live and becomes only where the
+reasoning lives.
 
 > Pursuit is a status board for every person God sends, guiding each gift
 > through their journey with God and with GodChasers.
@@ -168,41 +185,51 @@ coming, saying "I will be there" and being there.
 | P8 | Was baptized here | the promise | PCO, `salvation_decisions` | proposed |
 | P9 | Registered for and attended 3+ things in 12 months | **Time** | PCO Registrations + Check-Ins | proposed |
 
-### The bit where Time and the attendance ruling collide
+### Where Time and the attendance question collide, unresolved
 
-Time being "showing up" runs straight into the earlier ruling that
-attendance alone is not partnership. Both cannot be true as stated, so here
-is the line, and it is worth checking because everything downstream sits on
-it.
+**This section is `proposed`. PD has not ruled on it.** The previous draft
+did rule on it, in PD's name, and that was wrong.
 
-**Time is showing up when you said you would.** The gift is not the body in
-the seat, it is that the house could count on it in advance. Registering
-your kids, signing up for an event and coming, RSVPing a work day, taking a
-Growth Track seat for six weeks, being in a group that meets Tuesdays:
-somebody was planning around you, and you honoured it.
+Here is the actual tension, stated without an answer attached.
 
-**Sitting in a service having promised nothing is receiving.** Nobody
-counted on it, nothing was bound, and the person can stop tomorrow without
-anything falling over. That is the whole of the withdrawn twelve-visits
-rule, and it stays withdrawn.
+PD said Time is showing up, and the examples given were: registering kids,
+showing up to events, saying I will be there, **check-ins**. Check-ins were
+on that list explicitly.
 
-Look at PD's own examples and the line is already there: *registering* kids,
-*signing up* for events, *saying I will be there*. Three of the four are
-commitments made in advance. Only the bare check-in is not, and it is the
-only one that fails.
+PD separately asked: *if people attend our church but do not give or serve,
+we need to consider if they are a partner at all.* That was a question, and
+the previous draft converted it into a ruling.
 
-So the triad does not soften the attendance ruling, it explains it. And it
-corrects an error in the previous draft, which had P4 filed under a vaguer
-heading: bringing your children week after week is one of the largest gifts
-of Time the house receives, and it is Time precisely because it is a
-standing commitment rather than a passing visit.
+Both cannot stand unqualified. If a bare check-in is Time, and any one of
+the three makes a partner, then attendance alone does make a partner, and
+the question PD raised answers itself in the direction PD seemed to doubt.
 
-**Each currency has a bar, and that is a separate question from which
-currency.** One gift of twenty dollars is not Treasure; ten gifts in two
-years is. Showing up to one thing is not Time; showing up to what you
-signed up for, repeatedly, is. The triad names the three ways in. The
-thresholds are what separate a partner from a receiver, and they belong to
-PD.
+Two ways out, and it is PD's call which:
+
+**Option A, take the words literally.** Check-ins count as Time. Attendance
+at a threshold is partnership. The question PD raised is then answered by
+setting the bar high enough that a casual attender does not clear it, the
+same way ten gifts in two years keeps a one-off giver out of Treasure.
+Simple, consistent with the other two currencies, and it means a faithful
+attender who gives nothing is a partner.
+
+**Option B, narrow Time to committed showing up.** Time counts only where
+something was promised in advance: a registration, an RSVP, a Growth Track
+seat, a group that meets Tuesdays, your kids booked into a room week after
+week. A walk-in check-in is presence but not a gift, because nobody was
+counting on it. This keeps PD's doubt intact and keeps the withdrawn
+twelve-visits rule withdrawn.
+
+I lean to B, and I should say plainly that it is a lean and not a finding.
+Three of PD's four examples happen to be commitments made in advance, which
+is suggestive, but "check ins" was the fourth and it is right there in the
+list. Reading it out because it spoils a tidy theory is exactly the move
+that produced this section's correction.
+
+Whichever wins, **each currency needs a bar, and that is a separate
+question from which currency.** One gift of twenty dollars is not Treasure;
+ten gifts in two years is. The triad names the ways in. The thresholds
+separate a partner from a receiver, and every one of them belongs to PD.
 
 **A public commitment is the promise of the three, which is why it counts
 on its own.** A partnership date, a membership status, a baptism: none of
@@ -211,19 +238,24 @@ in" before the evidence has had time to accumulate. The house takes people
 at their word, so P1, P2 and P8 stand as rules rather than waiting for
 proof. That is the right posture, and it is worth knowing it is a choice.
 
-**Attendance alone is not partnership.** PD's ruling, and it is the right
-one: somebody who attends and gives none of the three has received from the
-house, not partnered with it. An earlier draft proposed making twelve
-visits a year enough on its own. That rule is withdrawn. Presence by itself
-only ever receives, and calling it partnership would flatter a number at
-the cost of the word. Philippians 1:5 is *koinonia*, participation, not
-attendance.
+**On attendance alone.** `proposed`, not PD. What PD actually said was
+*"if people attend our church but don't give or serve we need to consider
+if they are a partner at all"*, which raises the question rather than
+closing it. An earlier draft of this file wrote it up as a ruling, added
+"the gift is not the body in the seat" as though PD had said that too, and
+withdrew a rule on that authority. None of that was PD's.
+
+Where it actually stands: the twelve-visits rule is **suspended pending the
+Option A or B decision above**, not withdrawn by PD. The argument for
+suspending it is that presence by itself only ever receives, and calling it
+partnership flatters a number at the cost of the word. Philippians 1:5 is
+*koinonia*, participation rather than attendance. That is an argument I
+find good. It is not a decision anyone has made.
 
 **A gap the previous draft invented, now closed.** That draft claimed
 Talent had no signal of its own. That was an artefact of a wrong mapping,
 not a real hole: **serving is the Talent signal**, cleanly, and the house
-has it. Treasure is giving, Time is committed showing up, Talent is
-serving. All three are covered.
+has it. All three are covered.
 
 What remains is smaller and worth keeping in view. The house knows *who*
 serves; it does not know *what they are good at*. PCO can hold skills on a
@@ -233,11 +265,13 @@ classification problem, because both are Talent and both are partnership.
 It is a deployment problem: nobody can ask "who has a gift we are not
 using", which is the question a serving director actually needs.
 
-### The list that ruling creates
+### The list this creates either way
 
-Withdrawing the attendance rule does not throw those people away. It names
-them, which is the more useful thing. A flag rides alongside Fellowship,
-and the triad is what each flag counts:
+`proposed`. Useful under Option A or B, which is why it is worth having
+before that decision lands: under B these people are not partners, and
+under A most of them are partners the house has never spoken to. Either
+way naming them beats losing them. A flag rides alongside Fellowship, and
+the triad is what each flag counts:
 
 | # | Flag | Meaning |
 |---|---|---|
@@ -331,17 +365,19 @@ or the household in another state who watches every week and gives nothing
 gets filed as lapsed. Online Attendance is one of the seven vital signs; it
 should not be invisible to the clock that decides who is still here.
 
-**This list is wider than the triad, and by exactly one thing.** Most of
-what is above is the triad: registrations and Growth Track are Time,
-serving is Talent, gifts are Treasure, a kid's check-in is the household's
-Time. The bare check-in is the exception, and it is the whole exception.
+**What PD said, and what I added.** PD's words were *"a person who hasn't
+given, served or registered for 2 years is inactive"*: three signals.
+Everything else in the table above is `proposed` by me, and the two worth
+arguing for are the kids' check-in roll-up and the livestream tap, because
+without them every family whose adults do not badge in, and every household
+that watches from another state, reads as gone.
 
-That is not an inconsistency, it is the design. The signal list answers
-*are they still here*. The triad answers *have they partnered*. A person
-who slips into the back row every Sunday and promises nothing is fully
-Active and gives none of the three, which is exactly the A1 flag. Keeping
-the two questions apart is what makes that flag possible; collapsing them
-is what produced the withdrawn attendance rule.
+**The signal list and the triad are asking different questions**, which is
+why they do not have to match. The signal list answers *are they still
+here*. The triad answers *have they partnered*. Under Option B a person can
+be fully Active and give none of the three, which is what makes the A1 flag
+possible. Under Option A that gap mostly closes and the bare check-in is
+the only thing left in one list and not the other.
 
 ### The four states
 
@@ -438,6 +474,46 @@ limits decide what happens next. The one hard edge is "asked to be
 removed", which has to reach the shared suppression list rather than living
 only in Pursuit.
 
+## The admin page, and why it is the real fix
+
+PD asked for a page to set and reset these rules, and it is the answer to
+the attribution problem above rather than a convenience. While the rules
+live in prose and Python constants, the only way to change one is to ask an
+engineer, and the only record of who decided what is a paragraph somebody
+wrote. Paragraphs drift. This one did.
+
+So the rules are now rows. `pursuit_rules` is applied and seeded: **15 from
+PD, 12 proposed.** Every row carries `origin`, so the page can show at a
+glance which rules the house actually set and which are still my
+suggestions waiting on a decision.
+
+**`/pursuit/rules`, what it does:**
+
+- **Lists every rule grouped by ship**, each showing its threshold, its
+  window, and its currency where it has one.
+- **Marks origin plainly.** PD rules read as house policy. Proposed rules
+  read as awaiting a decision, with an Accept button that flips origin to
+  `pd` and puts a name and a date on it.
+- **Edits the numbers.** Ten gifts, two serves, ninety days, six months:
+  every one of them is a field, because every one of them is a pastoral
+  judgement rather than a technical constant.
+- **Enables and disables** without deleting, for rules like Charisma Track
+  that have no data source yet.
+- **Resets to default**, per rule or wholesale, which is why the seed
+  values stay in `supabase/pursuit_rules.sql` and why `is_default` exists.
+- **Shows what a change would do before it is saved.** Dropping P3 from ten
+  gifts to six moves a knowable number of people onto Partnership, and the
+  page should say how many before the button is pressed rather than after.
+- **Writes `pursuit_rule_history` on every change**, so the answer to "who
+  decided this and when" is a query and not a memory.
+
+Access sits with the same roles that can open Pursuit at all. Editing who
+counts as a partner is not a thing to leave on an unlocked page.
+
+**Nothing about this page sends anything to anybody.** It changes how the
+house counts. What the house then does about a count belongs to the
+Pathways engine, with its switch and its suppression list.
+
 ## What has to be built
 
 1. **PCO People sync**: the roster, membership status, partnership date,
@@ -453,7 +529,10 @@ only in Pursuit.
 6. **State and archive**: a `state` column, a `last_signal_at` column that
    every sync updates, an `archived_reason` a human sets and a clock never
    does, and the deceased check that runs before any list renders.
-7. **Charisma Track and mentoring**: no data source exists yet. Until one
+   *Applied.*
+7. **The rules admin page** at `/pursuit/rules`, per the section above. The
+   tables are applied and seeded; the page itself is not built yet.
+8. **Charisma Track and mentoring**: no data source exists yet. Until one
    does, D1 and D7 need a manual flag, which is the honest answer rather
    than a guess.
 
