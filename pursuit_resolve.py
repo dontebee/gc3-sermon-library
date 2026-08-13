@@ -329,6 +329,24 @@ def main():
         signal(person, now_ts, "serving")
     print(f"  serving: {len(serving)} assignment(s)")
 
+    # --- Group life: Charisma and every life group. PD's D9: being in any
+    # group is formation and boards Discipleship; D2: leading one likewise
+    # (leaders also hold Leadership rules elsewhere when they carry a Hub
+    # role). A current membership is ongoing Time, so it keeps the clock
+    # alive the way the serving roster does.
+    memberships = fetch_all("pco_group_memberships",
+                            "pco_person_id,group_name,role,joined_at")
+    in_groups = 0
+    for m in memberships:
+        pid = m.get("pco_person_id")
+        if not pid:
+            continue
+        in_groups += 1
+        person = reg.upsert(pco=pid, ship="discipleship", source="group")
+        signal(person, now.timestamp(), "group")
+        signal(person, m.get("joined_at"), "group")
+    print(f"  groups: {len(memberships)} membership(s), {in_groups} with a person id")
+
     # --- Giving: Treasure. PD's P3: ten or more gifts in 24 months is
     # partnership. Counts and dates only; amounts are never read here, and
     # nothing outward is ever triggered by any of it.

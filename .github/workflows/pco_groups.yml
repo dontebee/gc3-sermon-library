@@ -1,0 +1,40 @@
+name: PCO Groups mirror
+
+on:
+  schedule:
+    - cron: '25 10 * * *'  # daily at 10:25 UTC, after the People mirror
+                           # (10:15) and ahead of pursuit resolve (11:00),
+                           # so group life is fresh before the board thinks
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        # Defaults ON for manual runs, per house rule (see CLAUDE.md).
+        description: 'Dry run (read and report, write nothing). Untick to write.'
+        type: boolean
+        default: true
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # Counts and group names only in the log; person ids go to the
+      # database and nowhere else. No artifact upload, ever.
+      - name: Mirror groups
+        env:
+          PCO_APP_ID: ${{ secrets.PCO_APP_ID }}
+          PCO_SECRET: ${{ secrets.PCO_SECRET }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          DRY_RUN: ${{ inputs.dry_run && '1' || '' }}
+        run: python pco_groups_sync.py
