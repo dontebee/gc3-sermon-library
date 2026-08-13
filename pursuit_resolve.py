@@ -546,13 +546,17 @@ def main():
     print(f"  cards: {len(new_cards)} placed.")
 
     # Same-name pairs, for the merge queue. Never merged by a job.
-    pairs = []
+    pairs, seen_pairs = [], set()
     for a, b in reg.same_name_pairs:
         ida = (id_by_pco.get(a.get("pco_person_id")) or id_by_email.get(a.get("email"))
                or id_by_phone.get(a.get("phone")))
         idb = (id_by_pco.get(b.get("pco_person_id")) or id_by_email.get(b.get("email"))
                or id_by_phone.get(b.get("phone")))
         if ida and idb and ida != idb:
+            key = frozenset((ida, idb))
+            if key in seen_pairs:
+                continue          # the same twins can surface from two sources
+            seen_pairs.add(key)
             pairs.append({"person_id": ida, "other_person_id": idb,
                           "evidence": {"matched_on": "display_name"},
                           "confidence": 0.30})
