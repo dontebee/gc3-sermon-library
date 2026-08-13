@@ -120,57 +120,100 @@ Renting GoHighLevel means paying monthly to look at one slice of this through
 a clunky window. Building means the church's own roles, the church's own
 language, and every slice on one card.
 
-## The product, screen by screen
+## The map: every section, every tool
 
-**1. The Board.** Columns are the working sub-stages of Friendship and
-Fellowship (Planned a Visit, Confirmed, Attended, No Show, Not Coming,
-Returned), same mental model the team already has from ChurchFunnels, so
-there is nothing to relearn. Cards carry name, the Sunday
-they planned, a source chip (which campaign), days in stage, and three
-one-tap actions: call, text, note. Web: drag cards between columns. Phone:
-one column at a time, swipe between stages, long-press to move a card via a
-bottom sheet. Filters in one row: This Sunday, campaign, assigned to, gone
-quiet. Realtime: two staffers see each other's moves live (Supabase
-realtime).
+Fifteen rooms in four wings, plus the tools that follow you everywhere. Every
+room exists to serve the creed; anything that does not is out.
 
-**2. The Person card.** Tap a card, get the journey, newest first: ad click,
-form fill, each Pathway email with opened or clicked, personal touches
-logged (a "texted them" button that takes two seconds on a phone), attended
-Sundays, Growth Track milestones. Plus notes and assignment. This is the
-"ultimate" part and it is mostly a query, because the data is already home.
+### Daily wing (where the team lives)
 
-**3. Sunday mode.** A greeter-friendly list of everyone expected today, big
-photo-less cards, one giant button: They Are Here. Marks attended, moves the
-card, feeds the scoreboard. Later the same list reconciles against PCO
-Check-Ins automatically, so even unmarked attends get caught by the nightly
-job. This screen is how 4.3% recorded attendance becomes a real number.
+**1. Home (My Day).** Role-aware landing: my tasks, my people, what needs me
+today. A greeter, a captain, and PD each open a different Home.
 
-**4. Strategies.** The Church Candy playbook as editable sequences, run
-through Pathways. Ships with three templates:
-- *Plan My Visit*: instant confirm, Saturday reminder, Sunday morning text
-  task for a human, after-visit thank you, no-show warm re-invite, day-7
-  last touch.
-- *Event follow-up* (the FIRE CONFERENCE kind): confirm, event reminder,
-  after-event bridge to a Sunday.
-- *No-show revival*: the 1,031-person warm list, gentle, spaced, capped.
-Each step is a card in a vertical sequence: toggle it, edit its copy (house
-style enforced: 60 to 90 words, Scripture after the point, the P.S. carries
-the ask), change its wait. Version one is this sequence editor, which covers
-everything Church Candy actually did. Version two is the full drag-and-drop
-canvas (triggers, branches, conditions as nodes) once the sequences prove
-out; building the canvas first is how products spend six months shipping
-nothing.
+**2. The Board.** The kanban: drag cards through stages on desktop, swipe
+and move on phones, realtime between staffers. Saved views (smart lists),
+filters in one row (This Sunday, campaign, ship, assigned, gone quiet),
+bulk actions, global search.
 
-**5. The Dashboard.** The Ads to Seats page, live: spend to leads to arrived
-to seated to returned, per campaign, against the two-year baseline. Plus the
-fleet view: how many aboard each ship, and who moved up this month, the
-discipleship funnel no church software shows. The
-artifact built on 2026-08-12 is the prototype; here it reads the tables
-directly and updates itself.
+**3. People.** The directory: every person God has sent, searchable. Each
+opens the Person Card: the journey timeline (ad, form, sends, opens,
+Sundays, Growth Track, workflow cards), ships history, notes, touches,
+tags, assignment, and a merge tool for duplicates.
 
-**6. Tasks.** The personal-touch queue: who needs a text from PD today, who
-a greeter should watch for, what fell out of a strategy for a human to
-catch. Assignable, phone-first, tap-to-call.
+**4. Sunday.** Service-day mode: everyone expected today, one giant They
+Are Here button, a ten-second quick-add for walk-ins (most of the 36 FTGs
+came through no funnel; Sunday captures them), and instant follow-up
+assignment. Feeds attendance to the vital signs live.
+
+**5. Tasks.** Everything assigned to me across boards, strategies, and
+workflows: the personal-touch queue, due dates, snooze, done. Tap to call
+or text from the task.
+
+### Fleet wing (a workspace per ship)
+
+**6 to 10. The five ship rooms.** Every ship gets its own room with the
+same four walls:
+
+- **The goal.** A target PD sets per season, tracked live
+  (`ship_goals`): Friendship, planned visits per month and first touch
+  under one hour; Fellowship, show rate and second-visit rate;
+  Partnership, Growth Track completions and covenant steps; Discipleship,
+  track enrollment and serving rate; Leadership, leaders commissioned and
+  new Friendships started by leaders.
+- **The cards.** That ship's slice of the Board.
+- **The plays.** The strategies and workflows that serve this ship.
+- **The crew.** Its captain and team, with each person's queue.
+
+A captain opens their ship room and sees their whole charge on one screen:
+the goal, the gap, the people, the plays, the crew.
+
+### Engine wing (how work gets done)
+
+**11. Strategies.** Member-facing sequences, compiled to the Pathways
+engine (the one sender): the sequence editor, the template library (Plan
+My Visit, event follow-up, no-show revival), house-style copy editing
+(60 to 90 words, Scripture after the point, the P.S. carries the ask),
+test mode, and per-strategy results (sent, opened, clicked, moved ships).
+The drag-and-drop canvas builder arrives in Phase D.
+
+**12. Workflows.** Staff task pipelines: baptism prep, volunteer
+onboarding, weddings, anything with steps, owners, and due dates. This
+room mirrors Planning Center Workflows first, becomes native second, and
+replaces them at cutover. Distinct from Strategies on purpose: Workflows
+move staff, Strategies move members.
+
+**13. Reach.** The ads room: campaigns, cost per lead, per-ad cost per
+seat, form health (the leak monitor that would have caught January), and
+the agency scoreboard Creative Church Marketing answers to.
+
+### Leadership wing
+
+**14. Vital Signs.** The seven signs with trends, the fleet view (aboard
+each ship, moved up this month), and Ads to Seats live. The Monday digest
+quotes it.
+
+**15. Admin.** Roles and permissions, stage and ship configuration, goal
+setting, integration health (Meta, PCO, Pathways, ChurchFunnels during
+transition), the audit log, and suppression visibility read from the
+Pathways engine.
+
+### Tools that follow you everywhere
+
+Global search from any screen. Quick-log a touch (called, texted, met) in
+two taps. Click to call or text. Notes with mentions. Per-person activity
+feed. CSV import and export. Push notifications for my assignments and my
+people's milestones.
+
+### Who sees what
+
+| Role | Their Pursuit |
+|---|---|
+| Lead Pastor | Everything; Home opens on Vital Signs and the personal-touch queue |
+| Staff admin | All boards, People, Workflows, Admin |
+| Ship captain | Their ship room, its board slice, plays, and crew queues |
+| Ministry leader | Their workflow pipelines and their team's tasks |
+| Greeter | Sunday mode only |
+| Everyone | Only what their role needs; giving aggregates appear on Vital Signs for leadership only, and never on any card |
 
 ## Where it lives and how it is built
 
@@ -231,22 +274,26 @@ flowchart LR
   in (definitions, steps, live cards, assignees), synced by a scheduled job
   on the existing PCO credentials.
 
-### Planning Center workflows: duplicate some, integrate the rest
+### Planning Center workflows: mirror, then replace
 
-The rule that prevents dueling systems: **every process lives in exactly one
-home, and Pursuit sees all of them.**
+PD's call: Pursuit ultimately replaces PCO Workflows. The path there in
+three steps, with one boundary:
 
 - **Mirror from day one.** PCO workflow cards appear on the Pursuit person
   card ("Baptism Prep, step 2 of 5, assigned to LaTwanna"), so staff never
-  wonder what the other system is doing.
-- **Duplicate what is really the chase.** Visitor and assimilation workflows
-  in PCO get rebuilt as Pursuit stages and strategies, then retired in PCO.
-- **Integrate what is really operations.** Baptism prep, volunteer
-  onboarding, weddings stay in PCO, and "create a PCO workflow card" becomes
-  a strategy action in Pursuit alongside "enroll in Pathway" and "task for a
-  human": boarding Partnership can automatically open a membership-class
-  card assigned to the right staffer. Pursuit conducts; PCO plays its
-  instrument.
+  wonder what the other system is doing while both exist.
+- **Rebuild natively.** The chase workflows (visitor, assimilation) become
+  Pursuit stages and strategies early; the operational pipelines (baptism
+  prep, volunteer onboarding, weddings) become native Pursuit Workflows in
+  Phase D, imported from their PCO definitions.
+- **Retire.** When native Workflows carry every live process, PCO Workflows
+  are turned off. One home per process the whole way through; nothing runs
+  in two places.
+
+The boundary: Pursuit replaces PCO **Workflows** only. PCO **People** stays
+the membership record and PCO **Check-Ins** stays the attendance source;
+Pursuit reads both and replaces neither. Replacing kiosk check-in hardware
+is nobody's calling.
 
 ## Phases (each one ships something the team uses)
 
@@ -264,7 +311,9 @@ three templates live, the no-show revival run as its first campaign (with
 PD's copy approval, per house style), and PCO workflow cards as a strategy
 action so assimilation steps land on the right staffer's PCO list.
 
-**Phase D, the canvas and the extras:** React Flow drag-and-drop workflow
+**Phase D, the canvas and the extras:** native Workflows imported from PCO
+definitions (and PCO Workflows retired once they carry every live process),
+ship goals and captain rooms, plus the React Flow drag-and-drop workflow
 builder, SMS steps (A2P registration and consent, a deliberate decision),
 PCO auto-reconcile if not already landed, ManyChat front door if wanted.
 
