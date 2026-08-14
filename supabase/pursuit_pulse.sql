@@ -71,6 +71,13 @@ fell as (
   where state = 'inactive' and last_signal_at is not null
   group by 1
 ),
+attendance as (
+  -- Room counts from the Headcounts mirror: every attendance type summed.
+  -- Zero until pco_headcounts_sync.py runs with the product granted.
+  select date_trunc('month', starts_at) m, sum(total) n
+  from pco_headcounts where starts_at is not null
+  group by 1
+),
 series as (
   select jsonb_agg(jsonb_build_object(
     'month',       to_char(months.m, 'YYYY-MM'),
@@ -78,7 +85,8 @@ series as (
     'givers',      coalesce(gv.n, 0),
     'group_joins', coalesce(jn.n, 0),
     'hands',       coalesce(hd.n, 0),
-    'fell_off',    coalesce(fl.n, 0)
+    'fell_off',    coalesce(fl.n, 0),
+    'attendance',  coalesce(att.n, 0)
   ) order by months.m) as j
   from months
   left join new_people np on np.m = months.m
@@ -86,6 +94,7 @@ series as (
   left join joins      jn on jn.m = months.m
   left join hands      hd on hd.m = months.m
   left join fell       fl on fl.m = months.m
+  left join attendance att on att.m = months.m
 ),
 
 -- ---------- the fleet, split by pulse ----------

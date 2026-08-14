@@ -1,0 +1,40 @@
+name: PCO Headcounts mirror
+
+on:
+  schedule:
+    - cron: '35 10 * * *'  # daily at 10:35 UTC, between the Groups mirror
+                           # (10:25) and pursuit resolve (11:00), so the
+                           # room counts are fresh before the Pulse reads
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        # Defaults ON for manual runs, per house rule (see CLAUDE.md).
+        description: 'Dry run (read and report, write nothing). Untick to write.'
+        type: boolean
+        default: true
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # Headcounts are aggregates: counts and attendance-type names only,
+      # in the log and in the table alike. No artifact upload, ever.
+      - name: Mirror headcounts
+        env:
+          PCO_APP_ID: ${{ secrets.PCO_APP_ID }}
+          PCO_SECRET: ${{ secrets.PCO_SECRET }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          DRY_RUN: ${{ inputs.dry_run && '1' || '' }}
+        run: python pco_headcounts_sync.py
