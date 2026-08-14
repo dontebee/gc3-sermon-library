@@ -72,10 +72,21 @@ fell as (
   group by 1
 ),
 attendance as (
-  -- Room counts from the Headcounts mirror: every attendance type summed.
-  -- Zero until pco_headcounts_sync.py runs with the product granted.
+  -- Room counts from the Headcounts mirror: the same three series PD's
+  -- own Planning Center card sums, and only those. Guest tallies,
+  -- salvations and worship counts are their own numbers, not the room.
   select date_trunc('month', starts_at) m, sum(total) n
-  from pco_headcounts where starts_at is not null
+  from pco_headcounts
+  where starts_at is not null
+    and attendance_type in ('In Person', 'Online-Views', 'West')
+  group by 1
+),
+salvations as (
+  -- The house counts hands raised for Christ as an attendance type.
+  -- The truest number on the whole board.
+  select date_trunc('month', starts_at) m, sum(total) n
+  from pco_headcounts
+  where starts_at is not null and attendance_type = 'Salvations'
   group by 1
 ),
 series as (
@@ -86,7 +97,8 @@ series as (
     'group_joins', coalesce(jn.n, 0),
     'hands',       coalesce(hd.n, 0),
     'fell_off',    coalesce(fl.n, 0),
-    'attendance',  coalesce(att.n, 0)
+    'attendance',  coalesce(att.n, 0),
+    'salvations',  coalesce(sv.n, 0)
   ) order by months.m) as j
   from months
   left join new_people np on np.m = months.m
@@ -95,6 +107,7 @@ series as (
   left join hands      hd on hd.m = months.m
   left join fell       fl on fl.m = months.m
   left join attendance att on att.m = months.m
+  left join salvations sv on sv.m = months.m
 ),
 
 -- ---------- the fleet, split by pulse ----------
