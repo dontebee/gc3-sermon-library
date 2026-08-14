@@ -59,9 +59,9 @@ def pco_get(path, params=None):
             time.sleep(min(wait, 30))
             continue
         if r.status_code in (401, 403, 404):
-            print(f"ERROR: PCO returned {r.status_code} for Headcounts. The personal")
-            print("access token may not include the Check-Ins / Headcounts product.")
-            print("Open the token's settings in Planning Center, grant it, and rerun.")
+            print(f"ERROR: PCO returned {r.status_code} for Check-Ins headcounts. The")
+            print("personal access token may not include the Check-Ins product. Open")
+            print("the token's settings in Planning Center, grant Check-Ins, and rerun.")
             sys.exit(1)
         r.raise_for_status()
         return r.json()
@@ -89,8 +89,10 @@ def main():
         print("ERROR: PCO_APP_ID / PCO_SECRET not set.")
         sys.exit(1)
 
+    # Headcounts is a vertex of the Check-Ins product, not its own API:
+    # the Headcounts app writes into Check-Ins event times.
     counts, included = walk_with_included(
-        "/headcounts/v2/headcounts", {"include": "event_time,attendance_type"})
+        "/check-ins/v2/headcounts", {"include": "event_time,attendance_type"})
 
     # The included pile carries the names and the clock for every count.
     type_name = {i["id"]: (i.get("attributes", {}).get("name") or "").strip()
