@@ -335,6 +335,21 @@ const langPenalty=m=>{
   const l=m.original_language||m.l;
   return (!l||l==='en')?0:(LANG_PEN[langPref()]||0);
 };
+// Same idea for older films, but with a carve-out for the canon: Star Wars and
+// The Godfather earn their slot on reputation, Jaws 2 does not.
+const ERA_CUT=1980, ERA_PEN={rarely:1.2,sometimes:0.5,freely:0};
+const eraPref=()=>state.settings.eraPref||'rarely';
+const eraPenalty=m=>{
+  const y=+((m.release_date||'').slice(0,4))||m.y||0;
+  if(!y||y>=ERA_CUT)return 0;
+  const pen=ERA_PEN[eraPref()]||0;
+  if(!pen)return 0;
+  const v=m.vote_average||m.v||0, n=m.vote_count||m.vc||0;
+  if(v>=7.9&&n>=4000)return 0;        // genuinely canonical - no penalty at all
+  if(v>=7.5&&n>=1500)return pen*0.4;  // a strong classic - shown, but behind
+  return pen;
+};
+const penalty=m=>langPenalty(m)+eraPenalty(m);
 const SHAPE={
   'xlen1':'tight (under 1h40)','xlen2':'standard (1h40-2h05)',
   'xlen3':'long (2h05-2h30)','xlen4':'epic (2h30+)',
@@ -586,7 +601,7 @@ async function getPicks(){
   // 3. cheap pass to shortlist, then a real content match on the survivors
   for(const [id,r] of info)
     score.set(id,score.get(id)+0.8*affinityNorm(r,w,mx)
-      +0.25*Math.max(0,((r.vote_average||0)-6)/4)-langPenalty(r));
+      +0.25*Math.max(0,((r.vote_average||0)-6)/4)-penalty(r));
   const shortlist=[...info.values()].sort((a,b)=>score.get(b.id)-score.get(a.id)).slice(0,24);
   if(tv){
     await Promise.all(shortlist.map(async r=>{
@@ -616,7 +631,7 @@ async function getGems(exclude){
   const w=genreWeights(),mx=maxWeight(w);
   const list=(d.results||[]).filter(m=>fresh(m)&&!exclude.has(m.id));
   list.forEach(remember);
-  list.sort((a,b)=>(affinityNorm(b,w,mx)-langPenalty(b))-(affinityNorm(a,w,mx)-langPenalty(a)));
+  list.sort((a,b)=>(affinityNorm(b,w,mx)-penalty(b))-(affinityNorm(a,w,mx)-penalty(a)));
   const top=list.slice(0,12);
   top.forEach(m=>{m._why={title:tg.map(g=>GENRES[g]).filter(Boolean).join(' + '),genre:true};});
   return seededShuffle(top,'gems'+todayStr()+shuffleBump).slice(0,9);
@@ -631,7 +646,7 @@ async function getNewReleases(exclude){
   const w=genreWeights(),mx=maxWeight(w);
   const list=(d.results||[]).filter(m=>fresh(m)&&!exclude.has(m.id));
   list.forEach(remember);
-  list.sort((a,b)=>(affinityNorm(b,w,mx)-langPenalty(b))-(affinityNorm(a,w,mx)-langPenalty(a)));
+  list.sort((a,b)=>(affinityNorm(b,w,mx)-penalty(b))-(affinityNorm(a,w,mx)-penalty(a)));
   return list.slice(0,14);
 }
 // the training queue should also look like your shelf, not a generic top-100
@@ -652,7 +667,7 @@ async function getRateQueue(exclude){
     seen.add(m.id);
     if(fresh(m)){remember(m);pool.push(m);}
   }
-  pool.sort((a,b)=>(affinityNorm(b,w,mx)-langPenalty(b))-(affinityNorm(a,w,mx)-langPenalty(a)));
+  pool.sort((a,b)=>(affinityNorm(b,w,mx)-penalty(b))-(affinityNorm(a,w,mx)-penalty(a)));
   return seededShuffle(pool.slice(0,30),'rate'+todayStr()+shuffleBump).slice(0,20);
 }
 
@@ -958,7 +973,13 @@ function renderSettings(v){
     '<option value="sometimes"'+(langPref()==='sometimes'?' selected':'')+'>Sometimes</option>'+
     '<option value="freely"'+(langPref()==='freely'?' selected':'')+'>No preference</option>'+
   '</select></div>'+
-  '<p class="note">A nudge, not a ban \u2014 a subtitled film has to clearly out-score an English one to take a slot.</p></div>'+
+  '<div class="row" style="margin-top:10px"><label class="note" for="eraSel">Films made before 1980:</label>'+
+  '<select id="eraSel" data-act="eraPref" style="width:auto">'+
+    '<option value="rarely"'+(eraPref()==='rarely'?' selected':'')+'>Rarely \u2014 classics only</option>'+
+    '<option value="sometimes"'+(eraPref()==='sometimes'?' selected':'')+'>Sometimes</option>'+
+    '<option value="freely"'+(eraPref()==='freely'?' selected':'')+'>No preference</option>'+
+  '</select></div>'+
+  '<p class="note">Nudges, not bans. A subtitled film has to clearly out-score an English one; a pre-1980 film is held back unless it is genuinely canonical \u2014 the Star Wars and Godfather tier passes untouched.</p></div>'+
 
   '<hr class="sp"><div class="panel"><h3>Import the movies I own 📀</h3>'+
   '<p><b>The honest answer:</b> Google Play/YouTube and Apple don’t let apps read your purchase library. The fastest reliable way is to paste your titles below and I’ll match them for you:</p>'+
@@ -1129,6 +1150,7 @@ function buildBriefing(){
   L.push(rated.length+' rated, '+all.filter(m=>m.owned).length+' owned'+
     (tv?' ('+tv.nRated+' rated and '+tv.nOwned+' owned films studied in depth)':', none studied in depth yet'));
   L.push('Foreign-language films: '+langPref()+' (English is my default).');
+  L.push('Films made before 1980: '+eraPref()+' - only the canonical ones (Star Wars, The Godfather).');
   if(rated.length)L.push('Average score '+(rated.reduce((a,m)=>a+m.rating,0)/rated.length).toFixed(2)+
     ' - treat anything below that as a criticism.');
   const fmt=list=>list.map(f=>f.name+' ('+(f.w>0?'+':'')+f.w.toFixed(2)+')').join(', ');
@@ -1397,6 +1419,14 @@ document.addEventListener('click',async e=>{
   }
 });
 document.addEventListener('change',e=>{
+  const ep=e.target.closest('[data-act="eraPref"]');
+  if(ep){
+    state.settings.eraPref=ep.value;
+    save();
+    toast(ep.value==='rarely'?'Pre-1980 films: classics only':
+      ep.value==='freely'?'No era preference':'Pre-1980 films will show up sometimes');
+    return;
+  }
   const lp=e.target.closest('[data-act="langPref"]');
   if(lp){
     state.settings.langPref=lp.value;
