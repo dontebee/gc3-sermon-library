@@ -144,11 +144,39 @@ const SEED_LIBRARY=[
 {store:'Apple TV',titles:['Alexander (2004)','The Amateur (2025)','American Fiction (2023)','American Sniper (2014)','Animal Kingdom (2010)','Anyone But You (2023)','Aquaman and the Lost Kingdom (2023)','The Batman (2022)','Black Bag (2025)','BlackBerry (2023)','Blade Runner 2049 (2017)','Blue Beetle (2023)','Bob Marley: One Love (2024)','The Book of Eli (2010)','The Boys in the Boat (2023)','Bugonia (2025)',"Can't Stop Won't Stop: A Bad Boy Story (2017)",'Cape Fear (1991)','Captain America: Brave New World (2025)','Click (2006)','Clint Eastwood: A Cinematic Legacy (2021)','A Complete Unknown (2024)','The Creator (2023)','Criminal (2016)','Den of Thieves 2: Pantera (2025)','The Devil Wears Prada 2','Dirty Harry (1971)','Disclosure Day','The Drama','Dumb Money (2023)','Eddington (2025)','Eternity (2025)','Exodus: Gods and Kings (2014)','The Fall Guy (2024)','Fast X (2023)','A Few Good Men (1992)','The Flash (2023)','The Girl with the Dragon Tattoo (2011)','Good Fortune (2025)','Gran Torino (2008)','Gran Turismo (2023)','Greenland: Migration (2025)','Heretic (2024)','The Housemaid (2025)','The Hunger Games: The Ballad of Songbirds and Snakes (2023)','Hypnotic (2023)','I Got a Monster (2023)','The Grinch (2018)','Indiana Jones and the Dial of Destiny (2023)','Interstellar (2014)','The Invite','John Wick (2014)','John Wick: Chapter 2 (2017)','John Wick: Chapter 3 - Parabellum (2019)','John Wick: Chapter 4 (2023)','Jurassic World Rebirth (2025)',"Kelly's Heroes (1970)",'Killers of the Flower Moon (2023)','Knock at the Cabin (2023)','The Last Duel (2021)','Letters from Iwo Jima (2006)','Marty Supreme (2025)','Materialists (2025)','Memento (2000)','Million Dollar Baby (2004)','The Mule (2018)','Mystic River (2003)','Nine Days (2021)','One Battle After Another (2025)','The Prestige (2006)','Redux Redux (2025)','The Return (2024)','Richard Jewell (2019)','Roofman (2025)','The Running Man (2025)','Saturday Night (2024)','The Secret Life of Walter Mitty (2013)','Send Help','Shazam! Fury of the Gods (2023)','She Said (2022)','The Smashing Machine (2025)','Stranger Than Fiction (2006)','Sully (2016)','Supergirl','Thirteen Days (2000)','Transformers: Rise of the Beasts (2023)','Tron (1982)','Tron: Ares (2025)','Tron: Legacy (2010)','Trouble with the Curve (2012)','Troy (2004)','Tuner (2025)','Unforgiven (1992)','The Watchers (2024)','We Were Once a Fairytale (2009)',"We're the Millers (2013)",'Whitney Houston: I Wanna Dance with Somebody (2022)','Wicked (2024)',"The World's Fastest Indian (2005)"]}
 ];
 const SEED_TOTAL=SEED_LIBRARY.reduce((a,s)=>a+s.titles.length,0);
+const SEED_RATINGS=[
+{t:'The Pursuit of Happyness',y:'2006',r:10,n:'20/10 — all-time favorite'},
+{t:'The Prestige',y:'2006',r:10},
+{t:'Interstellar',y:'2014',r:10},
+{t:'The Dark Knight',y:'2008',r:10},
+{t:'What Dreams May Come',y:'1998',r:10},
+{t:'The Social Network',y:'2010',r:10},
+{t:'Moneyball',y:'2011',r:10},
+{t:'Steve Jobs',y:'2015',r:10},
+{t:'Prisoners',y:'2013',r:10},
+{t:'The Adjustment Bureau',y:'2011',r:10},
+{t:'The Usual Suspects',y:'1995',r:10},
+{t:'Hotel Rwanda',y:'2004',r:10,n:'freaking incredible'},
+{t:'The Big Short',y:'2015',r:10,n:'brilliant'},
+{t:'The Martian',y:'2015',r:10,n:'brilliant'},
+{t:'The Judge',y:'2014',r:10,n:'great, brilliant'},
+{t:'The Illusionist',y:'2006',r:10},
+{t:'The Departed',y:'2006',r:9},
+{t:'A Time to Kill',y:'1996',r:9},
+{t:'Oblivion',y:'2013',r:9},
+{t:'Shutter Island',y:'2010',r:9},
+{t:'Michael Clayton',y:'2007',r:8},
+{t:'The Secret Life of Walter Mitty',y:'2013',r:8},
+{t:'Bridge of Spies',y:'2015',r:7},
+{t:'Gone Girl',y:'2014',r:7},
+{t:'Whiplash',y:'2014',r:6},
+{t:'Hacksaw Ridge',y:'2016',r:6,n:'OK'}
+];
 const GENRES={28:'Action',12:'Adventure',16:'Animation',35:'Comedy',80:'Crime',99:'Documentary',18:'Drama',10751:'Family',14:'Fantasy',36:'History',27:'Horror',10402:'Music',9648:'Mystery',10749:'Romance',878:'Sci-Fi',10770:'TV Movie',53:'Thriller',10752:'War',37:'Western'};
 const DAY=86400000;
 const BUILT_IN_KEY='__TMDB_DEFAULT_KEY__'; // replaced with the real key by the deploy workflow
 
-let state={settings:{apiKey:'',region:'US'},movies:{},skips:{},cache:{},seedDone:false,seedMissed:[],scale10:false};
+let state={settings:{apiKey:'',region:'US'},movies:{},skips:{},cache:{},seedDone:false,seedMissed:[],scale10:false,ratingsDone:false};
 let tab='tonight';
 let known=new Map();      // id -> tmdb-ish object seen this session
 let modalId=null, modalDetail=null;
@@ -163,7 +191,7 @@ function load(){
       state.settings=Object.assign(state.settings,s.settings||{});
       state.movies=s.movies||{}; state.skips=s.skips||{}; state.cache=s.cache||{};
       state.seedDone=!!s.seedDone; state.seedMissed=s.seedMissed||[];
-      state.scale10=!!s.scale10;
+      state.scale10=!!s.scale10; state.ratingsDone=!!s.ratingsDone;
     }
   }catch(e){}
   migrateScale();
@@ -411,7 +439,11 @@ async function renderTonight(v){
     '<div class="panel" style="margin-bottom:20px;border-color:var(--accent)"><h3>📀 Your collection is ready to load</h3>'+
     '<p>The movie lists you gave me — <b>'+SEED_LIBRARY[0].titles.length+' from Google Play / YouTube</b> and <b>'+SEED_LIBRARY[1].titles.length+' from Apple TV</b> — are built into this site. One tap and I’ll match them all and put them on your shelf, marked with where you own them. Takes a few minutes; keep this tab open.</p>'+
     '<div class="row" style="margin-top:10px"><button class="btn" id="seedBtn" data-act="loadSeed">Load my collection ('+SEED_TOTAL+' movies)</button><span class="note" id="seedProg">'+(seedRunning?'Still working — hang tight…':'')+'</span></div></div>':'';
-  v.innerHTML=seedBanner+
+  const ratingsBanner=(!state.ratingsDone)?
+    '<div class="panel" style="margin-bottom:20px;border-color:var(--gold)"><h3>⭐ Your ratings are ready to load</h3>'+
+    '<p>The '+SEED_RATINGS.length+' movies you scored for me — from <b>The Pursuit of Happyness</b> at the top down to the ones you thought were just OK — are built in. One tap puts every score on your shelf, and the picks retune around them immediately.</p>'+
+    '<div class="row" style="margin-top:10px"><button class="btn" id="ratingsBtn" data-act="loadRatings">Load my ratings ('+SEED_RATINGS.length+' movies)</button><span class="note" id="ratingsProg">'+(ratingsRunning?'Still working — hang tight…':'')+'</span></div></div>':'';
+  v.innerHTML=ratingsBanner+seedBanner+
     '<div class="hero"><h1>'+(learning?'Let’s learn your taste 🎯':'Tonight’s picks 🍿')+'</h1>'+
     '<p>'+(learning
       ?'Rate a few movies you’ve already seen (just tap the stars — that’s it). After 3 or so ratings I can start picking movies <b>for you</b>.'
@@ -614,6 +646,39 @@ async function loadSeed(){
   save();
   toast('Your collection is in — '+added+' movies on your shelf 📀');
   render();
+  if(!state.ratingsDone)loadRatings();
+}
+
+let ratingsRunning=false;
+async function loadRatings(){
+  if(ratingsRunning||state.ratingsDone)return;
+  ratingsRunning=true;
+  const btn=$('#ratingsBtn'),prog=$('#ratingsProg');
+  if(btn)btn.style.display='none';
+  const missed=[];
+  let done=0,set=0;
+  for(const item of SEED_RATINGS){
+    const hit=await matchTitle(item.t,item.y);
+    if(hit){
+      remember(hit);
+      const r=record(hit.id);
+      if(r){
+        r.rating=item.r;
+        if(item.n&&!(r.note||'').trim())r.note=item.n;
+        r.updatedAt=Date.now();set++;
+      }
+    }else missed.push(item.t+' ('+item.y+')');
+    done++;
+    if(prog)prog.textContent='Scoring your movies… '+done+' / '+SEED_RATINGS.length+' checked, '+set+' rated';
+    if(done%10===0)save();
+    await sleep(110);
+  }
+  state.ratingsDone=true;
+  if(missed.length)state.seedMissed=(state.seedMissed||[]).concat(missed.map(t=>t+'  (ratings list)'));
+  ratingsRunning=false;
+  save();
+  toast('Your ratings are in — '+set+' movies scored ⭐');
+  render();
 }
 
 /* ============ bulk import ============ */
@@ -773,13 +838,14 @@ document.addEventListener('click',async e=>{
   if(act==='reshuffle'){shuffleBump++;render();return;}
   if(act==='shelfFilter'){shelfFilter=el.dataset.val;renderShelf($('#view'));return;}
   if(act==='loadSeed'){loadSeed();return;}
+  if(act==='loadRatings'){loadRatings();return;}
   if(act==='bulkMatch'){bulkMatch();return;}
   if(act==='bulkAdd'){bulkAdd();return;}
   if(act==='export'){exportBackup();return;}
   if(act==='wipe'){
     if(confirm('Erase ALL your ratings, owned movies and settings from this browser? This cannot be undone.')){
       localStorage.removeItem(LS_KEY);
-      state={settings:{apiKey:'',region:'US'},movies:{},skips:{},cache:{},seedDone:false,seedMissed:[],scale10:true};
+      state={settings:{apiKey:'',region:'US'},movies:{},skips:{},cache:{},seedDone:false,seedMissed:[],scale10:true,ratingsDone:false};
       render();toast('All data erased');
     }
     return;
