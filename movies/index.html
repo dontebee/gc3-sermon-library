@@ -400,7 +400,9 @@ function tasteVector(){
     for(const f of featuresOf(state.facts[m.id])){sum[f]=(sum[f]||0)+c;df[f]=(df[f]||0)+1;}
   }
   const N=rated.length,w={};
-  const BOOST={d:1.6,w:1.5,k:1.2,m:1.1,f:1.1,c:0.9,x:0.8,o:0.7,g:0.6};
+  // cinematographer sits near the top on purpose: it is the closest honest proxy
+  // TMDB gives us for "is this a beautiful picture"
+  const BOOST={d:1.6,f:1.55,w:1.5,k:1.2,m:1.2,c:0.9,x:0.8,o:0.7,g:0.6};
   for(const f in sum){
     const n=df[f];
     w[f]=(sum[f]/(n+2))*Math.log(1+N/(1+n))*(BOOST[f[0]]||1);
@@ -414,7 +416,8 @@ function deepScore(id,tv){
   if(!fs.length)return null;
   let s=0;const up=[];
   for(const k of fs){const v=tv.w[k]||0;s+=v;if(v>0.02)up.push([k,v]);}
-  up.sort((a,b)=>b[1]-a[1]);
+  // a shared cinematographer or composer is a more telling reason than a shared genre
+  up.sort((a,b)=>(b[1]*(('fmd'.includes(b[0][0]))?1.25:1))-(a[1]*(('fmd'.includes(a[0][0]))?1.25:1)));
   return {score:s/Math.sqrt(fs.length),
     top:up.slice(0,2).map(([k])=>state.names[k]).filter(Boolean)};
 }
