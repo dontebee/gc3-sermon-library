@@ -350,6 +350,18 @@ const eraPenalty=m=>{
   return pen;
 };
 const penalty=m=>langPenalty(m)+eraPenalty(m);
+// "Lesser known" must not mean "nobody watched it because it is bad". A film with 200
+// votes and an 8.0 average is usually noise, not a discovery. New releases get a lower
+// bar because votes take months to accumulate - that is how something like Tuner gets
+// through while a straight-to-streaming misfire does not.
+const THIS_YEAR=new Date().getFullYear();
+function qualityOk(m){
+  const v=m.vote_average||0, n=m.vote_count||0;
+  const y=+((m.release_date||'').slice(0,4))||0;
+  if(!y)return n>=400&&v>=6.2;
+  if(y>=THIS_YEAR-1)return n>=60&&v>=6.2;    // recent: reachable, but must not be dire
+  return n>=400&&v>=6.2;                     // older: it has had time, so it needs real reach
+}
 const SHAPE={
   'xlen1':'tight (under 1h40)','xlen2':'standard (1h40-2h05)',
   'xlen3':'long (2h05-2h30)','xlen4':'epic (2h30+)',
@@ -369,7 +381,10 @@ function featuresOf(f){
   for(const x of f.g||[])out.push('g'+x);
   // shape of the film itself \u2014 runtime stands in for pacing/patience
   if(f.rt)out.push('xlen'+(f.rt<100?1:f.rt<125?2:f.rt<150?3:4));
-  if(f.vc)out.push('xreach'+(f.vc<1500?1:f.vc<8000?2:3));
+  // vote counts take a year or two to mean anything, so a fresh release must not be
+  // labelled "under the radar" for the crime of being new - that is how a Tuner gets buried
+  const age=f.y?(new Date().getFullYear()-f.y):99;
+  if(f.vc&&age>=2)out.push('xreach'+(f.vc<1500?1:f.vc<8000?2:3));
   if(f.l)out.push('xlang'+f.l);
   if(f.y)out.push('xera'+(Math.floor(f.y/10)*10));
   if((f.v||0)>=7.8)out.push('xacclaim');
@@ -452,7 +467,9 @@ function tasteVector(){
   const docs=[];
   for(const m of Object.values(state.movies)){
     if(!state.facts[m.id])continue;
-    if(m.rating!=null)docs.push({m:m,wt:1,rated:true});
+    // Hating something is a stronger, more considered signal than liking it, and there
+    // are always fewer of them - without this they get shrunk into irrelevance.
+    if(m.rating!=null)docs.push({m:m,wt:m.rating<=2?1.6:(m.rating<=3?1.3:1),rated:true});
     else if(useOwned&&m.owned)docs.push({m:m,wt:OWN_W,rated:false});
   }
   const rd=docs.filter(d=>d.rated);
@@ -578,7 +595,7 @@ async function getPicks(){
     try{
       const d=await api('/movie/'+m.id+'/recommendations',{},24);
       (d.results||[]).forEach((r,i)=>{
-        if(!fresh(r))return;
+        if(!fresh(r)||!qualityOk(r))return;
         remember(r);info.set(r.id,r);
         const add=((m.rating||8)-5)/5*(1-i*0.03);
         score.set(r.id,(score.get(r.id)||0)+add);
@@ -602,7 +619,7 @@ async function getPicks(){
       sort_by:'popularity.desc','vote_count.gte':100,include_adult:false},24));
     const res=await Promise.all(jobs.map(j=>j.catch(()=>({results:[]}))));
     for(const d of res)for(const r of (d.results||[])){
-      if(!fresh(r)||info.has(r.id))continue;
+      if(!fresh(r)||info.has(r.id)||!qualityOk(r))continue;
       remember(r);info.set(r.id,r);
       score.set(r.id,(score.get(r.id)||0)+0.35);
     }
@@ -611,18 +628,25 @@ async function getPicks(){
   for(const [id,r] of info)
     score.set(id,score.get(id)+0.8*affinityNorm(r,w,mx)
       +0.25*Math.max(0,((r.vote_average||0)-6)/4)-penalty(r));
-  const shortlist=[...info.values()].sort((a,b)=>score.get(b.id)-score.get(a.id)).slice(0,24);
+  let shortlist=[...info.values()].sort((a,b)=>score.get(b.id)-score.get(a.id)).slice(0,24);
   if(tv){
     await Promise.all(shortlist.map(async r=>{
       try{await movieFacts(r.id);}catch(e){}
     }));
     saveSoon();
+    const poison=[];
     for(const r of shortlist){
       const ds=deepScore(r.id,tv);
       if(!ds)continue;
       score.set(r.id,score.get(r.id)+2.2*ds.score);   // content match now leads
+      // a strong resemblance to the films you rated 1 or 2 is a veto, not a demotion
+      if(ds.score<-0.35)poison.push(r.id);
       const y=why.get(r.id)||{};
       y.feats=ds.top;why.set(r.id,y);
+    }
+    if(poison.length<shortlist.length){
+      const drop=new Set(poison);
+      shortlist=shortlist.filter(r=>!drop.has(r.id));
     }
   }
   shortlist.sort((a,b)=>score.get(b.id)-score.get(a.id));
@@ -632,13 +656,15 @@ async function getPicks(){
 async function getGems(exclude){
   const tg=topGenres(3);
   if(!tg.length)return[];
+  // a real gem still has an audience - just not a blockbuster one
   const params={with_genres:tg.join('|'),sort_by:'vote_average.desc',
-    'vote_count.gte':150,'vote_count.lte':2500,'primary_release_date.gte':'1985-01-01',include_adult:false};
+    'vote_count.gte':800,'vote_count.lte':20000,'vote_average.gte':6.8,
+    'primary_release_date.gte':'1985-01-01',include_adult:false};
   const bad=dislikedGenres();
   if(bad.length)params.without_genres=bad.join(',');
   const d=await api('/discover/movie',params,24);
   const w=genreWeights(),mx=maxWeight(w);
-  const list=(d.results||[]).filter(m=>fresh(m)&&!exclude.has(m.id));
+  const list=(d.results||[]).filter(m=>fresh(m)&&!exclude.has(m.id)&&qualityOk(m));
   list.forEach(remember);
   list.sort((a,b)=>(affinityNorm(b,w,mx)-penalty(b))-(affinityNorm(a,w,mx)-penalty(a)));
   const top=list.slice(0,12);
@@ -646,17 +672,49 @@ async function getGems(exclude){
   return seededShuffle(top,'gems'+todayStr()+shuffleBump).slice(0,9);
 }
 async function getNewReleases(exclude){
-  const params={sort_by:'popularity.desc',
-    'primary_release_date.gte':iso(new Date(Date.now()-90*DAY)),
-    'primary_release_date.lte':todayStr(),'vote_count.gte':20,include_adult:false};
+  // Ranking new films by popularity just serves up whatever had the biggest marketing
+  // spend. Ask instead for recent films that look like the ones you already love, and
+  // keep the bar low on vote count so small releases can surface at all.
+  const since=iso(new Date(Date.now()-180*DAY));
+  const base={'primary_release_date.gte':since,'primary_release_date.lte':todayStr(),include_adult:false};
   const bad=dislikedGenres();
-  if(bad.length)params.without_genres=bad.join(',');
-  const d=await api('/discover/movie',params,12);
-  const w=genreWeights(),mx=maxWeight(w);
-  const list=(d.results||[]).filter(m=>fresh(m)&&!exclude.has(m.id));
-  list.forEach(remember);
-  list.sort((a,b)=>(affinityNorm(b,w,mx)-penalty(b))-(affinityNorm(a,w,mx)-penalty(a)));
-  return list.slice(0,14);
+  if(bad.length)base.without_genres=bad.join(',');
+  const tv=tasteVector();
+  const jobs=[api('/discover/movie',Object.assign({},base,
+    {sort_by:'popularity.desc','vote_count.gte':60,'vote_average.gte':6.2}),12)];
+  if(tv){
+    const kw=rankedFeatures(tv,'k',8),badkw=rankedFeatures(tv,'k',8,true);
+    const ppl=rankedFeatures(tv,'d',4).concat(rankedFeatures(tv,'w',4));
+    if(kw.length){
+      const p=Object.assign({},base,{with_keywords:kw.map(x=>x.id).join('|'),
+        sort_by:'vote_average.desc','vote_count.gte':60,'vote_average.gte':6.2});
+      if(badkw.length)p.without_keywords=badkw.map(x=>x.id).join(',');
+      jobs.push(api('/discover/movie',p,12));
+    }
+    if(ppl.length)jobs.push(api('/discover/movie',Object.assign({},base,
+      {with_people:ppl.map(x=>x.id).join('|'),sort_by:'primary_release_date.desc'}),12));
+  }
+  const res=await Promise.all(jobs.map(j=>j.catch(()=>({results:[]}))));
+  const w=genreWeights(),mx=maxWeight(w),seen=new Set(),list=[];
+  for(const d of res)for(const m of (d.results||[])){
+    if(seen.has(m.id)||exclude.has(m.id)||!fresh(m)||!qualityOk(m))continue;
+    seen.add(m.id);remember(m);list.push(m);
+  }
+  const cheap=m=>affinityNorm(m,w,mx)-penalty(m)+0.2*Math.max(0,((m.vote_average||0)-6)/4);
+  list.sort((a,b)=>cheap(b)-cheap(a));
+  const shortlist=list.slice(0,18);
+  if(tv){
+    await Promise.all(shortlist.map(async m=>{try{await movieFacts(m.id);}catch(e){}}));
+    saveSoon();
+    const sc=new Map();
+    for(const m of shortlist){
+      const ds=deepScore(m.id,tv);
+      sc.set(m.id,cheap(m)+(ds?2.2*ds.score:0));
+      if(ds&&ds.top.length)m._why={feats:ds.top};
+    }
+    shortlist.sort((a,b)=>sc.get(b.id)-sc.get(a.id));
+  }
+  return shortlist.slice(0,14);
 }
 // the training queue should also look like your shelf, not a generic top-100
 async function getRateQueue(exclude){
@@ -672,7 +730,7 @@ async function getRateQueue(exclude){
   const w=genreWeights(),mx=maxWeight(w);
   const seen=new Set(),pool=[];
   for(const d of res)for(const m of (d.results||[])){
-    if(seen.has(m.id)||exclude.has(m.id))continue;
+    if(seen.has(m.id)||exclude.has(m.id)||!qualityOk(m))continue;
     seen.add(m.id);
     if(fresh(m)){remember(m);pool.push(m);}
   }
@@ -796,7 +854,7 @@ async function renderTonight(v){
     '</div>'+
     (learning?'':'<h2>Picked for you tonight</h2><div class="sub">Because of what you rated 8–10 — and what’s in your collection</div><div id="secPicks">'+skeletons(6)+'</div>'+
       '<h2>Hidden gems you might’ve missed</h2><div class="sub">Lesser-known movies that fit your taste — the “Tuner” shelf</div><div id="secGems">'+skeletons(3)+'</div>'+
-      '<h2>New &amp; worth a look</h2><div class="sub">Out in the last ~3 months, sorted for you — so nothing slips by</div><div id="secNew">'+skeletons(6)+'</div>')+
+      '<h2>New &amp; worth a look</h2><div class="sub">Recent releases that match your taste, not whatever had the biggest marketing budget</div><div id="secNew">'+skeletons(6)+'</div>')+
     '<h2>'+(learning?'Have you seen these?':'Keep training my taste')+'</h2>'+
     '<div class="sub">Tap stars if you’ve seen it · “Haven’t seen it” just skips it</div>'+
     '<div id="secRate">'+skeletons(8)+'</div>';
