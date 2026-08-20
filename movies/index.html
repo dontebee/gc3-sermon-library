@@ -42,6 +42,8 @@ h2:first-child{margin-top:4px}
 .cbody{padding:8px 10px 10px;display:flex;flex-direction:column;gap:6px;flex:1}
 .ctitle{font-size:14px;font-weight:650;line-height:1.25}
 .ctitle .yr{color:var(--faint);font-weight:400}
+.why{font-size:11px;color:var(--accent2);line-height:1.3}
+.why b{color:var(--text);font-weight:650}
 .stars{display:flex;gap:0;align-items:center}
 .stars button{font-size:14px;line-height:1;color:#3a4258;padding:2px 1px;transition:transform .08s}
 .stars button.lit{color:var(--gold)}
@@ -294,78 +296,131 @@ function fresh(m){
 function touch(r){r.updatedAt=Date.now();saveSoon();}
 
 /* ============ taste / recommendations ============ */
+// Your ratings drive the model. Owning something is only a faint prior, and genre
+// fit is normalised to roughly -1..1 so it can nudge the ranking but never dominate
+// the "similar to what you loved" signal.
 function genreWeights(){
-  const w={};
+  const rated={},owned={};
+  let nRated=0,nOwned=0;
   for(const m of Object.values(state.movies)){
-    let s;
-    if(m.rating!=null)s=(m.rating-5.5)/2;
-    else if(m.owned)s=0.7;   // owning it is a quiet vote of confidence; real ratings weigh far more
-    else continue;
-    for(const g of m.genres||[])w[g]=(w[g]||0)+s;
+    const gs=m.genres||[];
+    if(!gs.length)continue;
+    if(m.rating!=null){
+      nRated++;
+      const s=(m.rating-6)/4;            // 10 -> +1, 6 -> 0, 1 -> -1.25
+      for(const g of gs)rated[g]=(rated[g]||0)+s;
+    }else if(m.owned){
+      nOwned++;
+      for(const g of gs)owned[g]=(owned[g]||0)+1;
+    }
+  }
+  const useOwned=state.settings.ownedSignal!==false;
+  const div=Math.max(1,Math.sqrt(nRated));
+  const w={};
+  for(const g of new Set([...Object.keys(rated),...Object.keys(owned)])){
+    let v=(rated[g]||0)/div;
+    if(useOwned&&nOwned)v+=0.35*((owned[g]||0)/nOwned);
+    w[g]=v;
   }
   return w;
 }
+const maxWeight=w=>Math.max(1,...Object.values(w).map(Math.abs));
+// mean, not sum: a film tagged with five genres shouldn't outrank a focused one
+const affinity=(m,w)=>{
+  const gs=m.genre_ids||m.genres||[];
+  if(!gs.length)return 0;
+  return gs.reduce((a,g)=>a+(w[g]||0),0)/gs.length;
+};
+const affinityNorm=(m,w,mx)=>affinity(m,w)/(mx||maxWeight(w));
 const ownedCount=()=>Object.values(state.movies).filter(m=>m.owned).length;
-const topGenres=n=>Object.entries(genreWeights()).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]).slice(0,n).map(([k])=>+k);
-const affinity=(m,w)=>(m.genre_ids||[]).reduce((a,g)=>a+(w[g]||0),0);
 const ratedCount=()=>Object.values(state.movies).filter(m=>m.rating!=null).length;
+const topGenres=n=>Object.entries(genreWeights()).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]).slice(0,n).map(([k])=>+k);
+const dislikedGenres=()=>Object.entries(genreWeights()).filter(([,v])=>v<-0.15).sort((a,b)=>a[1]-b[1]).slice(0,4).map(([k])=>+k);
+
+// the movies your picks are reasoned from: your highest scores, rotated daily
+function pickSources(){
+  const loved=Object.values(state.movies).filter(m=>m.rating>=8);
+  if(loved.length)
+    return seededShuffle(loved,'src'+todayStr()+shuffleBump)
+      .sort((a,b)=>b.rating-a.rating).slice(0,12);
+  const ownedPool=Object.values(state.movies).filter(m=>m.rating==null&&m.owned&&(m.vote||0)>=6.5);
+  return seededShuffle(ownedPool,'ownedseed'+todayStr()+shuffleBump).slice(0,8)
+    .map(m=>Object.assign({},m,{rating:8,_proxy:true}));
+}
 
 async function getPicks(){
-  const w=genreWeights();
-  let loved=Object.values(state.movies).filter(m=>m.rating>=8)
-    .sort((a,b)=>b.rating-a.rating||b.updatedAt-a.updatedAt).slice(0,8);
-  if(loved.length<8){
-    // until there are enough real ratings, seed from a daily rotation of the best-reviewed owned movies
-    const ownedPool=Object.values(state.movies).filter(m=>m.rating==null&&m.owned&&(m.vote||0)>=6.5);
-    loved=loved.concat(seededShuffle(ownedPool,'ownedseed'+todayStr()+shuffleBump)
-      .slice(0,8-loved.length).map(m=>Object.assign({},m,{rating:8})));
-  }
-  const score=new Map(),info=new Map();
-  await Promise.all(loved.map(async m=>{
+  const w=genreWeights(),mx=maxWeight(w);
+  const sources=pickSources();
+  const score=new Map(),info=new Map(),why=new Map();
+  await Promise.all(sources.map(async m=>{
     try{
       const d=await api('/movie/'+m.id+'/recommendations',{},24);
       (d.results||[]).forEach((r,i)=>{
         if(!fresh(r))return;
         remember(r);info.set(r.id,r);
-        score.set(r.id,(score.get(r.id)||0)+((m.rating-5)/2)*(1-i*0.04));
+        const add=((m.rating||8)-5)/5*(1-i*0.03);   // consensus across your favourites
+        score.set(r.id,(score.get(r.id)||0)+add);
+        const cur=why.get(r.id);
+        if(!cur||add>cur.v)why.set(r.id,{v:add,title:m.title,rating:m._proxy?null:m.rating});
       });
     }catch(e){}
   }));
-  for(const [id,r] of info)score.set(id,score.get(id)+0.15*affinity(r,w)+(r.vote_average||0)/20);
-  const ranked=[...info.values()].sort((a,b)=>score.get(b.id)-score.get(a.id));
-  return seededShuffle(ranked.slice(0,18),'picks'+todayStr()+shuffleBump).slice(0,6);
+  for(const [id,r] of info){
+    score.set(id,score.get(id)+0.8*affinityNorm(r,w,mx)+0.25*Math.max(0,((r.vote_average||0)-6)/4));
+    const y=why.get(id);
+    if(y)r._why=y;
+  }
+  return [...info.values()].sort((a,b)=>score.get(b.id)-score.get(a.id)).slice(0,6);
 }
 async function getGems(exclude){
   const tg=topGenres(3);
   if(!tg.length)return[];
-  const d=await api('/discover/movie',{with_genres:tg.join('|'),sort_by:'vote_average.desc',
-    'vote_count.gte':150,'vote_count.lte':2500,'primary_release_date.gte':'1985-01-01',include_adult:false},24);
-  const w=genreWeights();
+  const params={with_genres:tg.join('|'),sort_by:'vote_average.desc',
+    'vote_count.gte':150,'vote_count.lte':2500,'primary_release_date.gte':'1985-01-01',include_adult:false};
+  const bad=dislikedGenres();
+  if(bad.length)params.without_genres=bad.join(',');
+  const d=await api('/discover/movie',params,24);
+  const w=genreWeights(),mx=maxWeight(w);
   const list=(d.results||[]).filter(m=>fresh(m)&&!exclude.has(m.id));
   list.forEach(remember);
-  list.sort((a,b)=>affinity(b,w)-affinity(a,w));
-  return seededShuffle(list.slice(0,12),'gems'+todayStr()+shuffleBump).slice(0,3);
+  list.sort((a,b)=>affinityNorm(b,w,mx)-affinityNorm(a,w,mx));
+  const top=list.slice(0,12);
+  top.forEach(m=>{m._why={title:tg.map(g=>GENRES[g]).filter(Boolean).join(' + '),genre:true};});
+  return seededShuffle(top,'gems'+todayStr()+shuffleBump).slice(0,3);
 }
 async function getNewReleases(exclude){
-  const d=await api('/discover/movie',{sort_by:'popularity.desc',
+  const params={sort_by:'popularity.desc',
     'primary_release_date.gte':iso(new Date(Date.now()-90*DAY)),
-    'primary_release_date.lte':todayStr(),'vote_count.gte':20,include_adult:false},12);
-  const w=genreWeights();
+    'primary_release_date.lte':todayStr(),'vote_count.gte':20,include_adult:false};
+  const bad=dislikedGenres();
+  if(bad.length)params.without_genres=bad.join(',');
+  const d=await api('/discover/movie',params,12);
+  const w=genreWeights(),mx=maxWeight(w);
   const list=(d.results||[]).filter(m=>fresh(m)&&!exclude.has(m.id));
   list.forEach(remember);
-  list.sort((a,b)=>affinity(b,w)-affinity(a,w));
+  list.sort((a,b)=>affinityNorm(b,w,mx)-affinityNorm(a,w,mx));
   return list.slice(0,6);
 }
+// the training queue should also look like your shelf, not a generic top-100
 async function getRateQueue(exclude){
-  const [p1,p2,t1]=await Promise.all([
-    api('/movie/popular',{page:1},24),api('/movie/popular',{page:2},24),api('/movie/top_rated',{page:1},24)]);
+  const tg=topGenres(3);
+  const calls=[api('/movie/popular',{page:1},24),api('/movie/top_rated',{page:1},24)];
+  if(tg.length){
+    const bad=dislikedGenres();
+    const p={with_genres:tg.join('|'),sort_by:'popularity.desc','vote_count.gte':400,include_adult:false};
+    if(bad.length)p.without_genres=bad.join(',');
+    calls.unshift(api('/discover/movie',p,24),api('/discover/movie',Object.assign({},p,{page:2}),24));
+  }
+  const res=await Promise.all(calls.map(c=>c.catch(()=>({results:[]}))));
+  const w=genreWeights(),mx=maxWeight(w);
   const seen=new Set(),pool=[];
-  for(const m of [...(t1.results||[]),...(p1.results||[]),...(p2.results||[])]){
+  for(const d of res)for(const m of (d.results||[])){
     if(seen.has(m.id)||exclude.has(m.id))continue;
     seen.add(m.id);
     if(fresh(m)){remember(m);pool.push(m);}
   }
-  return seededShuffle(pool,'rate'+todayStr()+shuffleBump).slice(0,8);
+  pool.sort((a,b)=>affinityNorm(b,w,mx)-affinityNorm(a,w,mx));
+  return seededShuffle(pool.slice(0,30),'rate'+todayStr()+shuffleBump).slice(0,8);
 }
 
 /* ============ shared UI bits ============ */
@@ -398,9 +453,12 @@ function cardHTML(m,opts={}){
   acts+='<button class="chip wl '+(r&&r.watchlist?'on':'')+'" data-act="watch" data-id="'+m.id+'">'+(r&&r.watchlist?'✓ Saved':'Watch later')+'</button>';
   if(opts.skip)acts+='<button class="chip x" data-act="skip" data-id="'+m.id+'">Haven’t seen it</button>';
   if(opts.dismiss)acts+='<button class="chip x" data-act="dismiss" data-id="'+m.id+'">Not for me</button>';
+  const why=m._why?'<div class="why">'+(m._why.genre
+    ?'Fits your '+esc(m._why.title)
+    :'Because you rated <b>'+esc(m._why.title)+'</b>'+(m._why.rating?' '+m._why.rating:''))+'</div>':'';
   return '<div class="card" data-cid="'+m.id+'">'+posterHTML(m)+
     '<div class="cbody"><div class="ctitle">'+esc(title)+' <span class="yr">'+esc(year)+'</span></div>'+
-    starsHTML(m.id,rating,false)+'<div class="cacts">'+acts+'</div></div></div>';
+    why+starsHTML(m.id,rating,false)+'<div class="cacts">'+acts+'</div></div></div>';
 }
 function gridHTML(list,opts){return '<div class="grid">'+list.map(m=>cardHTML(m,opts)).join('')+'</div>';}
 const skeletons=n=>'<div class="grid">'+Array.from({length:n},()=>'<div class="skel"></div>').join('')+'</div>';
@@ -576,6 +634,10 @@ function renderSettings(v){
   '<button class="btn" data-act="saveKey">Save &amp; test</button></div>'+
   '<div class="row" style="margin-top:10px"><label class="note" for="regionInput">Country for “where to watch”:</label>'+
   '<input id="regionInput" style="width:80px" maxlength="2" value="'+esc(state.settings.region||'US')+'"></div></div>'+
+
+  '<hr class="sp"><div class="panel"><h3>How picks are chosen</h3>'+
+  '<p>Your ratings always lead. Owning a movie counts as a faint hint on top of that - useful early on, but if your shelf is full of things you bought and never loved, switch it off and go on ratings alone.</p>'+
+  '<div class="storeopts"><label><input type="checkbox" data-act="ownedSignal"'+(state.settings.ownedSignal!==false?' checked':'')+'> Let my collection nudge the picks</label></div></div>'+
 
   '<hr class="sp"><div class="panel"><h3>Import the movies I own 📀</h3>'+
   '<p><b>The honest answer:</b> Google Play/YouTube and Apple don’t let apps read your purchase library. The fastest reliable way is to paste your titles below and I’ll match them for you:</p>'+
@@ -904,6 +966,13 @@ document.addEventListener('click',async e=>{
   }
 });
 document.addEventListener('change',e=>{
+  const os=e.target.closest('[data-act="ownedSignal"]');
+  if(os){
+    state.settings.ownedSignal=os.checked;
+    save();
+    toast(os.checked?'Collection counts as a hint again':'Picks now use your ratings only');
+    return;
+  }
   const el=e.target.closest('[data-act="store"]');
   if(!el)return;
   const r=record(+el.dataset.id);
