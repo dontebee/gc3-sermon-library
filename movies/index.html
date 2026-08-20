@@ -316,7 +316,7 @@ function fresh(m){
   if(sk&&Date.now()-sk<30*DAY)return false;
   return true;
 }
-function touch(r){r.updatedAt=Date.now();saveSoon();}
+function touch(r){r.updatedAt=Date.now();saveSoon();syncSoon();}
 
 /* ============ deep taste model ============ */
 // Genres are a 19-word vocabulary. What actually separates one drama from another is
@@ -481,11 +481,19 @@ function tasteVector(){
   }
   const N=docs.length,w={};
   const BOOST={d:1.6,f:1.55,w:1.5,k:1.2,m:1.2,c:0.9,x:0.8,o:0.7,g:0.6};
+  const idfMax=Math.log(1+N);
   for(const f in sum){
-    // weighted mean, so a big collection cannot shout down a considered score
-    w[f]=(sum[f]/(wsum[f]+2))*Math.log(1+N/(1+df[f]))*(BOOST[f[0]]||1);
+    // A weighted mean, so a big collection cannot shout down a considered score.
+    const mean_f=sum[f]/(wsum[f]+2);
+    // IDF is normalised to 0..1: it should discount a tag that is on everything,
+    // not multiply a rare one into the stratosphere.
+    const idf=Math.log(1+N/(1+df[f]))/idfMax;
+    // And confidence scales with evidence: one appearance is a coincidence,
+    // five is a pattern. Without this a single film's keywords dominate the profile.
+    const conf=df[f]/(df[f]+2);
+    w[f]=mean_f*idf*conf*(BOOST[f[0]]||1);
   }
-  return {w:w,mean:mean,centre:centre,N:N,sd:sd,nRated:rd.length,nOwned:docs.length-rd.length};
+  return {w:w,mean:mean,centre:centre,N:N,sd:sd,nRated:rd.length,nOwned:docs.length-rd.length,df:df};
 }
 function deepScore(id,tv){
   const f=state.facts[id];
@@ -499,10 +507,11 @@ function deepScore(id,tv){
   return {score:s/Math.sqrt(fs.length),
     top:up.slice(0,2).map(([k])=>state.names[k]).filter(Boolean)};
 }
-function rankedFeatures(tv,prefix,n,negative){
+function rankedFeatures(tv,prefix,n,negative,minDf){
   if(!tv)return [];
+  const need=minDf||2;   // a single appearance is a coincidence, not a taste
   return Object.entries(tv.w)
-    .filter(([k,v])=>k[0]===prefix&&(negative?v<-0.02:v>0.02))
+    .filter(([k,v])=>k[0]===prefix&&(negative?v<-0.02:v>0.02)&&(tv.df?(tv.df[k]||0)>=need:true))
     .sort((a,b)=>negative?a[1]-b[1]:b[1]-a[1]).slice(0,n)
     .map(([k,v])=>({id:k.slice(1),key:k,name:state.names[k]||k,w:v}));
 }
@@ -1002,6 +1011,16 @@ function renderSettings(v){
   '<div class="row"><button class="btn" data-act="briefing">📋 Copy my taste briefing</button></div>'+
   '<textarea id="briefBox" rows="8" style="display:none;margin-top:10px" readonly></textarea></div>'+
 
+  '<hr class="sp"><div class="panel"><h3>Save to the repo 🗂️</h3>'+
+  '<p>Your library lives in this browser by default, which means a cleared cache loses it. Point it at the git repo and every rating, note and sub-score is committed to <code>movies/data/library.json</code> - durable, versioned, and readable from any device.</p>'+
+  '<p class="note">Reading needs nothing. Saving needs a GitHub token with <b>Contents: read and write</b> on this repo (<a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">create one here</a>). It is stored only in this browser - never committed, never in the page.</p>'+
+  '<div class="row"><input id="ghTok" style="max-width:380px" type="password" placeholder="github_pat_..." value="'+esc(state.settings.ghToken||'')+'" autocomplete="off">'+
+  '<button class="btn" data-act="saveTok">Save token</button></div>'+
+  '<div class="row" style="margin-top:10px"><button class="btn" data-act="push">⬆ Save library to repo</button>'+
+  '<button class="btn ghost" data-act="pull">⬇ Load from repo</button>'+
+  '<span class="note" id="syncStat">'+esc(lastSync||(ghToken()?'Auto-saves a few seconds after each change':'No token yet - saving is off'))+'</span></div>'+
+  '<p class="note">Note: this repo is public, so anything saved here is publicly readable. Say the word and I will move it to a private repo instead.</p></div>'+
+
   '<hr class="sp"><div class="panel"><h3>Backup</h3>'+
   '<p>Your shelf lives in this browser. Export a backup now and then (or to move to a new phone/computer).</p>'+
   '<div class="row"><button class="btn ghost" data-act="export">⬇ Export backup</button>'+
@@ -1138,6 +1157,90 @@ function bulkAdd(){
   $('#bulkOut').innerHTML='<p class="note">Done — they’re on your shelf under <b>My Movies → Owned</b>. Rate the ones you love so I can learn from them!</p>';
 }
 
+/* ============ repo sync ============ */
+// The browser is not a safe home for years of ratings. This makes the git repo the
+// store of record: reads are public, writes use a token that lives only in this
+// browser and is never written into the file or the deployed page.
+const GH={owner:'dontebee',repo:'gc3-sermon-library',path:'movies/data/library.json',branch:'main'};
+const RAW='https://raw.githubusercontent.com/'+GH.owner+'/'+GH.repo+'/'+GH.branch+'/'+GH.path;
+const b64=str=>btoa(String.fromCharCode.apply(null,new TextEncoder().encode(str)));
+const ghToken=()=>(state.settings.ghToken||'').trim();
+let syncTimer=null,syncing=false,lastSync='';
+
+function libraryPayload(){
+  // deliberately excludes facts (re-derivable) and every secret
+  const st=state.settings;
+  return {v:1,updated:new Date().toISOString(),
+    note:'Marquee library - written by the app. Never contains API keys or tokens.',
+    settings:{region:st.region,langPref:st.langPref,eraPref:st.eraPref,ownedSignal:st.ownedSignal},
+    scale10:true,movies:state.movies,skips:state.skips};
+}
+function mergeLibrary(rem){
+  if(!rem||!rem.movies)return 0;
+  let n=0;
+  for(const id in rem.movies){
+    const r=rem.movies[id],l=state.movies[id];
+    if(!l||(r.updatedAt||0)>(l.updatedAt||0)){state.movies[id]=r;n++;}
+  }
+  for(const id in (rem.skips||{}))
+    if(!state.skips[id]||rem.skips[id]>state.skips[id])state.skips[id]=rem.skips[id];
+  for(const k in (rem.settings||{}))
+    if(state.settings[k]===undefined&&rem.settings[k]!==undefined)state.settings[k]=rem.settings[k];
+  if(n){state.scale10=true;save();}
+  return n;
+}
+async function pullLibrary(quiet){
+  try{
+    const r=await fetch(RAW+'?t='+Date.now(),{cache:'no-store'});
+    if(!r.ok)throw new Error(r.status===404?'No library file in the repo yet':'GitHub returned '+r.status);
+    const d=await r.json();
+    const n=mergeLibrary(d);
+    lastSync='pulled '+(d.updated||'').slice(0,16).replace('T',' ');
+    if(!quiet)toast(n?'Pulled '+n+' updated movies from the repo':'Already up to date with the repo');
+    if(n)render();
+    return n;
+  }catch(e){ if(!quiet)toast(e.message); return -1; }
+}
+async function pushLibrary(quiet){
+  const tok=ghToken();
+  if(!tok){ if(!quiet)toast('Add a GitHub token in Settings to save to the repo'); return false; }
+  if(syncing)return false;
+  syncing=true;
+  const stat=$('#syncStat');
+  if(stat)stat.textContent='Saving to the repo…';
+  try{
+    const H={Authorization:'Bearer '+tok,Accept:'application/vnd.github+json'};
+    const api='https://api.github.com/repos/'+GH.owner+'/'+GH.repo+'/contents/'+GH.path;
+    let sha=null;
+    const cur=await fetch(api+'?ref='+GH.branch,{headers:H});
+    if(cur.ok)sha=(await cur.json()).sha;
+    else if(cur.status===401||cur.status===403)throw new Error('GitHub rejected the token (needs Contents: read and write)');
+    const body={message:'Marquee: update movie library ('+ratedCount()+' rated, '+ownedCount()+' owned)',
+      content:b64(JSON.stringify(libraryPayload(),null,1)),branch:GH.branch};
+    if(sha)body.sha=sha;
+    const put=await fetch(api,{method:'PUT',headers:H,body:JSON.stringify(body)});
+    if(!put.ok){
+      const t=await put.text();
+      throw new Error('Save failed ('+put.status+') '+t.slice(0,120));
+    }
+    lastSync='saved '+new Date().toISOString().slice(0,16).replace('T',' ');
+    if(stat)stat.textContent='Saved to the repo ✓';
+    if(!quiet)toast('Your library is saved in the repo ✓');
+    syncing=false;return true;
+  }catch(e){
+    syncing=false;
+    if(stat)stat.textContent=e.message;
+    if(!quiet)toast(e.message);
+    return false;
+  }
+}
+// any change to the library schedules a commit
+function syncSoon(){
+  if(!ghToken())return;
+  clearTimeout(syncTimer);
+  syncTimer=setTimeout(()=>pushLibrary(true),12000);
+}
+
 /* ============ conversation bridge ============ */
 // A compact, readable digest of the profile, meant to be pasted into a chat so the
 // conversation can pick up exactly where the app left off.
@@ -1153,7 +1256,8 @@ function buildBriefing(){
   L.push('Films made before 1980: '+eraPref()+' - only the canonical ones (Star Wars, The Godfather).');
   if(rated.length)L.push('Average score '+(rated.reduce((a,m)=>a+m.rating,0)/rated.length).toFixed(2)+
     ' - treat anything below that as a criticism.');
-  const fmt=list=>list.map(f=>f.name+' ('+(f.w>0?'+':'')+f.w.toFixed(2)+')').join(', ');
+  const fmt=list=>list.map(f=>f.name+' ('+(f.w>0?'+':'')+f.w.toFixed(2)+
+    (tv&&tv.df?' over '+tv.df[f.key]+' films':'')+')').join(', ');
   if(tv){
     L.push('');L.push('WHAT MY RATINGS REWARD');
     const sec=(t,l)=>{if(l.length)L.push(t+': '+fmt(l));};
@@ -1218,7 +1322,8 @@ function showBriefing(txt){
 
 /* ============ backup ============ */
 function exportBackup(){
-  const data={settings:{region:state.settings.region},movies:state.movies,skips:state.skips,scale10:state.scale10};
+  // no keys or tokens in an exported file
+  const data={settings:{region:state.settings.region,langPref:state.settings.langPref,eraPref:state.settings.eraPref},movies:state.movies,skips:state.skips,scale10:state.scale10};
   const blob=new Blob([JSON.stringify(data,null,1)],{type:'application/json'});
   const a=document.createElement('a');
   a.href=URL.createObjectURL(blob);
@@ -1350,6 +1455,16 @@ document.addEventListener('click',async e=>{
     return;
   }
   if(act==='briefing'){copyBriefing();return;}
+  if(act==='push'){pushLibrary();return;}
+  if(act==='pull'){pullLibrary();return;}
+  if(act==='saveTok'){
+    const t=($('#ghTok')&&$('#ghTok').value||'').trim();
+    state.settings.ghToken=t;
+    save();
+    toast(t?'Token saved - your library will sync to the repo':'Token cleared');
+    if(t)pushLibrary();
+    return;
+  }
   if(act==='bulkMatch'){bulkMatch();return;}
   if(act==='bulkAdd'){bulkAdd();return;}
   if(act==='export'){exportBackup();return;}
@@ -1499,6 +1614,9 @@ if(!state.settings.apiKey)tab='tonight'; // shows setup hero
 render();
 // every rating should inform the engine without being asked
 if(state.settings.apiKey)setTimeout(()=>{if(needsStudy())studyRatings();},1200);
+// the repo is the store of record - take whatever it has first
+pullLibrary(true).then(()=>{if(state.settings.apiKey&&needsStudy())studyRatings();});
+window.addEventListener('pagehide',()=>{if(ghToken()&&syncTimer){clearTimeout(syncTimer);pushLibrary(true);}});
 </script>
 </body>
 </html>

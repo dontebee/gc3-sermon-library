@@ -1,0 +1,8 @@
+{
+  "v": 1,
+  "updated": null,
+  "note": "Marquee library - ratings, sub-scores, notes and owned titles. Written by the app via the GitHub API; safe to edit by hand. Never contains API keys or tokens.",
+  "settings": {},
+  "movies": {},
+  "skips": {}
+}
