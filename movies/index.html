@@ -49,6 +49,13 @@ h2:first-child{margin-top:4px}
 .stars button.lit{color:var(--gold)}
 .stars button:active{transform:scale(1.3)}
 .rnum{font-size:12px;font-weight:800;color:var(--gold);margin-left:5px}
+.subs{display:flex;flex-direction:column;gap:7px}
+.subrow{display:grid;grid-template-columns:96px 1fr 22px;align-items:center;gap:8px}
+.sublab{font-size:13px;color:var(--dim)}
+.dots{display:flex;gap:2px}
+.dots button{font-size:13px;line-height:1;color:#3a4258;padding:3px 1px}
+.dots button.lit{color:var(--accent2)}
+.subn{font-size:12px;font-weight:800;color:var(--accent2);text-align:right}
 .cacts{display:flex;gap:6px;margin-top:auto;flex-wrap:wrap}
 .chip{font-size:12px;font-weight:650;padding:4px 9px;border-radius:999px;border:1px solid var(--line);color:var(--dim)}
 .chip:hover{border-color:var(--faint);color:var(--text)}
@@ -176,6 +183,17 @@ const SEED_RATINGS=[
 ];
 const GENRES={28:'Action',12:'Adventure',16:'Animation',35:'Comedy',80:'Crime',99:'Documentary',18:'Drama',10751:'Family',14:'Fantasy',36:'History',27:'Horror',10402:'Music',9648:'Mystery',10749:'Romance',878:'Sci-Fi',10770:'TV Movie',53:'Thriller',10752:'War',37:'Western'};
 const DAY=86400000;
+// A rating is a judgment with parts. Capturing which part you were reacting to lets
+// credit land on the right feature: "gorgeous" should reward the cinematographer,
+// not the screenwriter.
+const SUBS=[['s','Story'],['v','Visuals'],['p','Pacing'],['a','Performances'],['e','Ending']];
+const TAGS=['gorgeous','great story','tight pacing','dragged','stellar cast',
+  'killer ending','weak ending','moved me','smart','predictable','too cruel','rewatchable'];
+const TAGFX={'gorgeous':{v:2},'great story':{s:2},'tight pacing':{p:2},'dragged':{p:-2},
+  'stellar cast':{a:2},'killer ending':{s:1.5},'weak ending':{s:-1.5},'moved me':{s:2},
+  'smart':{s:1.5},'predictable':{s:-1.5},'too cruel':{s:-2.5},'rewatchable':{all:1}};
+// which judgment each feature family answers to
+const CHAN={k:'s',w:'s',g:'s',f:'v',m:'v',x:'p',c:'a',d:'all',o:'all'};
 const BUILT_IN_KEY='__TMDB_DEFAULT_KEY__'; // replaced with the real key by the deploy workflow
 
 let state={settings:{apiKey:'',region:'US'},movies:{},skips:{},cache:{},seedDone:false,seedMissed:[],scale10:false,ratingsDone:false,facts:{},names:{}};
@@ -396,8 +414,16 @@ function tasteVector(){
   const centre=sd<0.6?6:mean;          // if every score is identical, fall back to an absolute pivot
   const sum={},df={};
   for(const m of rated){
-    const c=m.rating-centre;
-    for(const f of featuresOf(state.facts[m.id])){sum[f]=(sum[f]||0)+c;df[f]=(df[f]||0)+1;}
+    const base=m.rating-centre;
+    for(const f of featuresOf(state.facts[m.id])){
+      const ch=CHAN[f[0]]||'all';
+      let c=(m.sub&&ch!=='all'&&m.sub[ch]!=null)?m.sub[ch]-centre:base;
+      for(const t of m.tags||[]){
+        const fx=TAGFX[t];
+        if(fx)c+=(fx[ch]||0)+(fx.all||0);
+      }
+      sum[f]=(sum[f]||0)+c;df[f]=(df[f]||0)+1;
+    }
   }
   const N=rated.length,w={};
   // cinematographer sits near the top on purpose: it is the closest honest proxy
@@ -593,6 +619,22 @@ async function getRateQueue(exclude){
 }
 
 /* ============ shared UI bits ============ */
+function subRowsHTML(id,sub){
+  sub=sub||{};
+  return '<div class="subs">'+SUBS.map(function(x){
+    const k=x[0],label=x[1],val=sub[k]||0;
+    return '<div class="subrow"><span class="sublab">'+label+'</span><span class="dots">'+
+      Array.from({length:10},(_,i)=>'<button data-act="sub" data-id="'+id+'" data-k="'+k+
+        '" data-val="'+(i+1)+'" class="'+(val>=i+1?'lit':'')+'" title="'+(i+1)+'/10">\u25cf</button>').join('')+
+      '</span><span class="subn">'+(val||'')+'</span></div>';
+  }).join('')+'</div>';
+}
+function tagsHTML(id,tags){
+  tags=tags||[];
+  return '<div class="row" style="gap:6px">'+TAGS.map(t=>
+    '<button class="chip '+(tags.indexOf(t)>=0?'on':'')+'" data-act="tag" data-id="'+id+
+    '" data-t="'+esc(t)+'">'+esc(t)+'</button>').join('')+'</div>';
+}
 function starsHTML(id,rating,big){
   let h='<div class="stars'+(big?' bigstars':'')+'" role="group" aria-label="Rate out of 10">';
   for(let v=1;v<=10;v++)
@@ -769,6 +811,24 @@ function renderShelf(v){
   if(sel)sel.addEventListener('change',()=>{shelfSort=sel.value;renderShelf($('#view'));});
 }
 
+function ownWordsHTML(){
+  const rated=Object.values(state.movies).filter(m=>m.rating!=null);
+  const tally={};
+  rated.forEach(m=>(m.tags||[]).forEach(t=>tally[t]=(tally[t]||0)+1));
+  const tags=Object.entries(tally).sort((a,b)=>b[1]-a[1]);
+  const parts=SUBS.map(function(x){
+    const vals=rated.filter(m=>m.sub&&m.sub[x[0]]!=null).map(m=>m.sub[x[0]]);
+    return vals.length?{label:x[1],avg:vals.reduce((a,b)=>a+b,0)/vals.length,n:vals.length}:null;
+  }).filter(Boolean);
+  if(!tags.length&&!parts.length)return '';
+  let h='<h4 style="margin:14px 0 6px;font-size:13px;text-transform:uppercase;letter-spacing:.8px;color:var(--faint)">In your own words</h4>';
+  if(parts.length)h+=parts.map(p=>bar2(p.label+' ('+p.n+')',p.avg,10)).join('');
+  if(tags.length)h+='<div class="row" style="gap:6px;margin-top:8px">'+
+    tags.map(([t,n])=>'<span class="chip on" style="cursor:default">'+esc(t)+' \u00d7'+n+'</span>').join('')+'</div>';
+  return h;
+}
+const bar2=(label,val,max)=>'<div class="barrow"><span>'+esc(label)+'</span><div><div class="bar" style="width:'+
+  Math.round(Math.min(100,val/max*100))+'%"></div></div><span>'+val.toFixed(1)+'</span></div>';
 // what the ratings say once you look past genre
 function deepProfileHTML(){
   const tv=tasteVector();
@@ -793,6 +853,7 @@ function deepProfileHTML(){
     block('Faces you keep coming back to',cast,'wl on')+
     block('Craft you respond to',rankedFeatures(tv,'m',3).concat(rankedFeatures(tv,'f',3)),'wl on')+
     block('Shape of film that suits you',rankedFeatures(tv,'x',5),'wl on')+
+    ownWordsHTML()+
     (avoid.length?'<h4 style="margin:14px 0 6px;font-size:13px;text-transform:uppercase;letter-spacing:.8px;color:var(--faint)">What drags a score down</h4>'+
       '<div class="row" style="gap:6px">'+avoid.map(f=>'<span class="chip x" style="cursor:default;border-color:var(--bad);color:var(--bad)">'+esc(f.name)+'</span>').join('')+'</div>':'')+
     '</div>';
@@ -862,6 +923,11 @@ function renderSettings(v){
     '<hr class="sp"><div class="panel"><h3>From your collection, I couldn’t match these</h3>'+
     '<p>Search for them by hand on the Search tab, or paste them above with a corrected title/year:</p>'+
     (state.seedMissed||[]).map(t=>'<div class="improw"><span class="miss">'+esc(t)+'</span></div>').join('')+'</div>':'')+
+
+  '<hr class="sp"><div class="panel"><h3>Talk it over with Claude 💬</h3>'+
+  '<p>The app learns from numbers. A conversation can hold the things numbers miss. This copies a readable digest of your profile - what your ratings reward, what drags a score down, how you score story vs visuals vs pacing, and every note you have written - ready to paste into a chat.</p>'+
+  '<div class="row"><button class="btn" data-act="briefing">📋 Copy my taste briefing</button></div>'+
+  '<textarea id="briefBox" rows="8" style="display:none;margin-top:10px" readonly></textarea></div>'+
 
   '<hr class="sp"><div class="panel"><h3>Backup</h3>'+
   '<p>Your shelf lives in this browser. Export a backup now and then (or to move to a new phone/computer).</p>'+
@@ -999,6 +1065,82 @@ function bulkAdd(){
   $('#bulkOut').innerHTML='<p class="note">Done — they’re on your shelf under <b>My Movies → Owned</b>. Rate the ones you love so I can learn from them!</p>';
 }
 
+/* ============ conversation bridge ============ */
+// A compact, readable digest of the profile, meant to be pasted into a chat so the
+// conversation can pick up exactly where the app left off.
+function buildBriefing(){
+  const all=Object.values(state.movies);
+  const rated=all.filter(m=>m.rating!=null).sort((a,b)=>b.rating-a.rating||a.title.localeCompare(b.title));
+  const tv=tasteVector();
+  const L=[];
+  L.push('MY MOVIE TASTE - Marquee briefing ('+todayStr()+')');
+  L.push(rated.length+' rated, '+all.filter(m=>m.owned).length+' owned'+
+    (tv?', '+tv.N+' studied in depth':', none studied in depth yet'));
+  if(rated.length)L.push('Average score '+(rated.reduce((a,m)=>a+m.rating,0)/rated.length).toFixed(2)+
+    ' - treat anything below that as a criticism.');
+  const fmt=list=>list.map(f=>f.name+' ('+(f.w>0?'+':'')+f.w.toFixed(2)+')').join(', ');
+  if(tv){
+    L.push('');L.push('WHAT MY RATINGS REWARD');
+    const sec=(t,l)=>{if(l.length)L.push(t+': '+fmt(l));};
+    sec('Themes',rankedFeatures(tv,'k',12));
+    sec('Directors',rankedFeatures(tv,'d',6));
+    sec('Writers',rankedFeatures(tv,'w',6));
+    sec('Cinematographers',rankedFeatures(tv,'f',4));
+    sec('Composers',rankedFeatures(tv,'m',4));
+    sec('Actors',rankedFeatures(tv,'c',8));
+    sec('Shape',rankedFeatures(tv,'x',5));
+    L.push('');L.push('WHAT DRAGS A SCORE DOWN');
+    L.push(fmt(rankedFeatures(tv,'k',8,true).concat(rankedFeatures(tv,'x',3,true)))||'(nothing yet)');
+  }
+  const subAvg={};
+  SUBS.forEach(function(x){
+    const k=x[0],vals=rated.filter(m=>m.sub&&m.sub[k]!=null).map(m=>m.sub[k]);
+    if(vals.length)subAvg[x[1]]=(vals.reduce((a,b)=>a+b,0)/vals.length).toFixed(1)+' (n='+vals.length+')';
+  });
+  if(Object.keys(subAvg).length){
+    L.push('');L.push('HOW I SCORE THE PARTS');
+    for(const k in subAvg)L.push('  '+k+': '+subAvg[k]);
+  }
+  const tally={};
+  rated.forEach(m=>(m.tags||[]).forEach(t=>tally[t]=(tally[t]||0)+1));
+  const tags=Object.entries(tally).sort((a,b)=>b[1]-a[1]);
+  if(tags.length){
+    L.push('');L.push('MY OWN WORDS (reaction tags)');
+    L.push(tags.map(([t,n])=>t+' x'+n).join(', '));
+  }
+  const line=m=>'  '+m.rating+'/10  '+m.title+(m.year?' ('+m.year+')':'')+
+    (m.sub&&Object.keys(m.sub).length?'  ['+SUBS.filter(x=>m.sub[x[0]]!=null)
+      .map(x=>x[1].toLowerCase()+' '+m.sub[x[0]]).join(', ')+']':'')+
+    ((m.tags&&m.tags.length)?'  {'+m.tags.join(', ')+'}':'')+
+    ((m.note||'').trim()?'  - "'+m.note.trim()+'"':'');
+  if(rated.length){
+    L.push('');L.push('HIGHEST');
+    rated.slice(0,25).forEach(m=>L.push(line(m)));
+    L.push('');L.push('LOWEST - the most informative ratings I have given');
+    rated.slice(-15).reverse().forEach(m=>L.push(line(m)));
+  }
+  const noted=rated.filter(m=>(m.note||'').trim()).slice(0,30);
+  if(noted.length){
+    L.push('');L.push('EVERYTHING I WROTE A NOTE ON');
+    noted.forEach(m=>L.push(line(m)));
+  }
+  L.push('');L.push('Ask me about any of these and suggest what to watch next.');
+  return L.join('\n');
+}
+function copyBriefing(){
+  const txt=buildBriefing();
+  const done=()=>toast('Briefing copied - paste it into your chat 💬');
+  if(navigator.clipboard&&navigator.clipboard.writeText)
+    navigator.clipboard.writeText(txt).then(done,()=>showBriefing(txt));
+  else showBriefing(txt);
+  const box=$('#briefBox');
+  if(box)box.value=txt;
+}
+function showBriefing(txt){
+  const box=$('#briefBox');
+  if(box){box.value=txt;box.style.display='block';box.select();toast('Select and copy the text below');}
+}
+
 /* ============ backup ============ */
 function exportBackup(){
   const data={settings:{region:state.settings.region},movies:state.movies,skips:state.skips,scale10:state.scale10};
@@ -1065,6 +1207,9 @@ function renderModal(){
       '<button class="chip wl '+(r&&r.watchlist?'on':'')+'" data-act="watch" data-id="'+d.id+'">'+(r&&r.watchlist?'✓ On watchlist':'Watch later')+'</button>'+
       '<button class="chip x" data-act="dismiss" data-id="'+d.id+'">'+(r&&r.dismissed?'Un-hide':'Not interested')+'</button></div>'+
     (r&&r.owned?'<div class="storeopts" style="margin-top:10px">'+STORES.map(s=>'<label><input type="checkbox" data-act="store" data-id="'+d.id+'" data-store="'+esc(s)+'"'+(r.stores.includes(s)?' checked':'')+'> '+esc(s)+'</label>').join('')+'</div>':'')+'</div>'+
+    '<div class="msec"><h4>Break it down <span style="text-transform:none;letter-spacing:0">(optional — each part teaches me something different)</span></h4>'+
+    subRowsHTML(d.id,r&&r.sub)+'</div>'+
+    '<div class="msec"><h4>Quick reactions</h4>'+tagsHTML(d.id,r&&r.tags)+'</div>'+
     '<div class="msec"><h4>What did you think? <span style="text-transform:none;letter-spacing:0">(optional — I use this to understand your taste)</span></h4>'+
     '<textarea id="noteBox" rows="3" placeholder="e.g. loved the tension, hated the ending…">'+esc(r?r.note:'')+'</textarea>'+
     '<div class="row" style="margin-top:8px"><button class="btn small" data-act="saveNote" data-id="'+d.id+'">Save note</button></div></div>'+
@@ -1110,6 +1255,26 @@ document.addEventListener('click',async e=>{
   if(act==='loadSeed'){loadSeed();return;}
   if(act==='loadRatings'){loadRatings();return;}
   if(act==='study'){studyRatings();return;}
+  if(act==='sub'){
+    const r=record(id);if(!r)return;
+    const k=el.dataset.k,val=+el.dataset.val;
+    r.sub=r.sub||{};
+    if(r.sub[k]===val)delete r.sub[k];else r.sub[k]=val;
+    touch(r);
+    if(modalId===id)renderModal();
+    return;
+  }
+  if(act==='tag'){
+    const r=record(id);if(!r)return;
+    const t=el.dataset.t;
+    r.tags=r.tags||[];
+    const i=r.tags.indexOf(t);
+    if(i>=0)r.tags.splice(i,1);else r.tags.push(t);
+    touch(r);
+    if(modalId===id)renderModal();
+    return;
+  }
+  if(act==='briefing'){copyBriefing();return;}
   if(act==='bulkMatch'){bulkMatch();return;}
   if(act==='bulkAdd'){bulkAdd();return;}
   if(act==='export'){exportBackup();return;}
