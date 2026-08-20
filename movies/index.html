@@ -32,7 +32,11 @@ h2{font-size:22px;margin:26px 0 4px}
 h2:first-child{margin-top:4px}
 .sub{color:var(--dim);font-size:14px;margin-bottom:14px}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(172px,1fr));gap:14px}
-.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;display:flex;flex-direction:column}
+.card{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;display:flex;flex-direction:column}
+.xbtn{position:absolute;top:6px;right:6px;width:26px;height:26px;border-radius:999px;
+  background:rgba(13,15,20,.8);color:var(--dim);font-size:15px;line-height:1;z-index:2;
+  display:flex;align-items:center;justify-content:center}
+.xbtn:hover{background:var(--bad);color:#fff}
 .poster{position:relative;aspect-ratio:2/3;background:var(--panel2);cursor:pointer;display:block;width:100%}
 .poster img{width:100%;height:100%;object-fit:cover;display:block}
 .poster .noimg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--faint);font-size:34px}
@@ -382,6 +386,11 @@ async function movieFacts(id){
 const needsStudy=()=>Object.values(state.movies)
   .filter(m=>m.rating!=null&&!state.facts[m.id]).length;
 
+// pull in the facts for one title the moment it is rated
+async function studySoon(id){
+  if(state.facts[id])return;
+  try{await movieFacts(id);saveSoon();}catch(e){}
+}
 let studyRunning=false;
 async function studyRatings(){
   if(studyRunning)return;
@@ -389,13 +398,13 @@ async function studyRatings(){
     .sort((a,b)=>b.rating-a.rating);
   if(!todo.length)return;
   studyRunning=true;
-  const btn=$('#studyBtn'),prog=$('#studyProg');
-  if(btn)btn.style.display='none';
+  let prog=$('#studyProg');
   let done=0;
   for(const m of todo){
     try{await movieFacts(m.id);}catch(e){}
     done++;
-    if(prog)prog.textContent='Studying your ratings… '+done+' / '+todo.length;
+    prog=prog||$('#studyProg');
+    if(prog)prog.textContent='🧠 Studying your ratings… '+done+' / '+todo.length;
     if(done%20===0)save();
     await sleep(90);
   }
@@ -565,7 +574,7 @@ async function getPicks(){
   }
   shortlist.sort((a,b)=>score.get(b.id)-score.get(a.id));
   shortlist.forEach(r=>{const y=why.get(r.id);if(y)r._why=y;});
-  return shortlist.slice(0,6);
+  return shortlist.slice(0,16);   // 6 shown, the rest wait on the bench
 }
 async function getGems(exclude){
   const tg=topGenres(3);
@@ -581,7 +590,7 @@ async function getGems(exclude){
   list.sort((a,b)=>affinityNorm(b,w,mx)-affinityNorm(a,w,mx));
   const top=list.slice(0,12);
   top.forEach(m=>{m._why={title:tg.map(g=>GENRES[g]).filter(Boolean).join(' + '),genre:true};});
-  return seededShuffle(top,'gems'+todayStr()+shuffleBump).slice(0,3);
+  return seededShuffle(top,'gems'+todayStr()+shuffleBump).slice(0,9);
 }
 async function getNewReleases(exclude){
   const params={sort_by:'popularity.desc',
@@ -594,7 +603,7 @@ async function getNewReleases(exclude){
   const list=(d.results||[]).filter(m=>fresh(m)&&!exclude.has(m.id));
   list.forEach(remember);
   list.sort((a,b)=>affinityNorm(b,w,mx)-affinityNorm(a,w,mx));
-  return list.slice(0,6);
+  return list.slice(0,14);
 }
 // the training queue should also look like your shelf, not a generic top-100
 async function getRateQueue(exclude){
@@ -615,7 +624,7 @@ async function getRateQueue(exclude){
     if(fresh(m)){remember(m);pool.push(m);}
   }
   pool.sort((a,b)=>affinityNorm(b,w,mx)-affinityNorm(a,w,mx));
-  return seededShuffle(pool.slice(0,30),'rate'+todayStr()+shuffleBump).slice(0,8);
+  return seededShuffle(pool.slice(0,30),'rate'+todayStr()+shuffleBump).slice(0,20);
 }
 
 /* ============ shared UI bits ============ */
@@ -662,8 +671,10 @@ function cardHTML(m,opts={}){
   let acts='';
   acts+='<button class="chip '+(r&&r.owned?'on':'')+'" data-act="own" data-id="'+m.id+'">'+(r&&r.owned?'✓ Own it':'I own it')+'</button>';
   acts+='<button class="chip wl '+(r&&r.watchlist?'on':'')+'" data-act="watch" data-id="'+m.id+'">'+(r&&r.watchlist?'✓ Saved':'Watch later')+'</button>';
-  if(opts.skip)acts+='<button class="chip x" data-act="skip" data-id="'+m.id+'">Haven’t seen it</button>';
+  if(opts.skip)acts+='<button class="chip x" data-act="skip" data-id="'+m.id+'">'+(opts.skipLabel||'Haven’t seen it')+'</button>';
   if(opts.dismiss)acts+='<button class="chip x" data-act="dismiss" data-id="'+m.id+'">Not for me</button>';
+  // quick clear in the corner: gets it out of the way without judging it
+  const corner=opts.skip?'<button class="xbtn" data-act="skip" data-id="'+m.id+'" title="Clear this one — I don’t know it" aria-label="Clear">✕</button>':'';
   let why='';
   if(m._why){
     const y=m._why,bits=[];
@@ -672,7 +683,7 @@ function cardHTML(m,opts={}){
     (y.feats||[]).forEach(f=>bits.push(esc(f)));
     if(bits.length)why='<div class="why">'+bits.join(' · ')+'</div>';
   }
-  return '<div class="card" data-cid="'+m.id+'">'+posterHTML(m)+
+  return '<div class="card" data-cid="'+m.id+'">'+corner+posterHTML(m)+
     '<div class="cbody"><div class="ctitle">'+esc(title)+' <span class="yr">'+esc(year)+'</span></div>'+
     why+starsHTML(m.id,rating,false)+'<div class="cacts">'+acts+'</div></div></div>';
 }
@@ -718,10 +729,11 @@ async function renderTonight(v){
     '<p>The '+SEED_RATINGS.length+' movies you scored for me — from <b>The Pursuit of Happyness</b> at the top down to the ones you thought were just OK — are built in. One tap puts every score on your shelf, and the picks retune around them immediately.</p>'+
     '<div class="row" style="margin-top:10px"><button class="btn" id="ratingsBtn" data-act="loadRatings">Load my ratings ('+SEED_RATINGS.length+' movies)</button><span class="note" id="ratingsProg">'+(ratingsRunning?'Still working — hang tight…':'')+'</span></div></div>':'';
   const nStudy=needsStudy();
-  const studyBanner=(nStudy>0&&nRated>=5)?
-    '<div class="panel" style="margin-bottom:20px;border-color:var(--accent2)"><h3>🧠 Go deeper than genre</h3>'+
-    '<p>Genres are a 19-word vocabulary. I can read the <b>themes</b> each of your films is actually about and the <b>directors, writers and actors</b> behind them, then learn which of those you reward — and which you punish. '+nStudy+' of your rated movies haven\u2019t been studied yet.</p>'+
-    '<div class="row" style="margin-top:10px"><button class="btn" id="studyBtn" data-act="study">Study my '+nStudy+' ratings</button><span class="note" id="studyProg">'+(studyRunning?'Still working \u2014 hang tight\u2026':'')+'</span></div></div>':'';
+  // studying is automatic now - this is a status line, not a chore to remember
+  const studyBanner=(nStudy>0||studyRunning)?
+    '<div class="panel" style="margin-bottom:20px;border-color:var(--accent2)">'+
+    '<p class="note" id="studyProg">\u1f9e0 Reading the themes, film-makers and craft behind your ratings'+
+    (nStudy?' \u2014 '+nStudy+' to go':'')+'\u2026</p></div>':'';
   v.innerHTML=studyBanner+ratingsBanner+seedBanner+
     '<div class="hero"><h1>'+(learning?'Let’s learn your taste 🎯':'Tonight’s picks 🍿')+'</h1>'+
     '<p>'+(learning
@@ -741,14 +753,18 @@ async function renderTonight(v){
     try{
       const list=await fn();
       list.forEach(m=>chosen.add(m.id));
-      el.innerHTML=list.length?gridHTML(list,opts):'<div class="empty">'+emptyMsg+'</div>';
+      const n=SHOW[sel]||6;
+      reserve[sel]={items:list.slice(n),opts:opts};
+      el.innerHTML=list.length?gridHTML(list.slice(0,n),opts):'<div class="empty">'+emptyMsg+'</div>';
+      el.querySelectorAll('.card').forEach(c=>c.dataset.sec=sel);
     }catch(e){el.innerHTML='<div class="errbox">'+esc(e.message)+'</div>';}
   };
   (async()=>{
     if(!learning){
-      await fill('#secPicks',getPicks,{dismiss:true},'Rate a few more movies 8–10 and picks will show up here.');
-      await fill('#secGems',()=>getGems(chosen),{dismiss:true},'Rate a few more movies to unlock hidden gems.');
-      await fill('#secNew',()=>getNewReleases(chosen),{dismiss:true},'Nothing new matches right now — check back tomorrow.');
+      const clear={dismiss:true,skip:true,skipLabel:'Don’t know it'};
+      await fill('#secPicks',getPicks,clear,'Rate a few more movies 8–10 and picks will show up here.');
+      await fill('#secGems',()=>getGems(chosen),clear,'Rate a few more movies to unlock hidden gems.');
+      await fill('#secNew',()=>getNewReleases(chosen),clear,'Nothing new matches right now — check back tomorrow.');
     }
     fill('#secRate',()=>getRateQueue(chosen),{skip:true},'You’ve been through today’s queue — come back tomorrow!');
   })();
@@ -1292,6 +1308,7 @@ document.addEventListener('click',async e=>{
     const val=+el.dataset.val;
     r.rating=(r.rating===val)?null:val;   // tap same star again to clear
     touch(r);
+    if(r.rating!=null)studySoon(id);   // learn from it immediately, not when asked
     if(r.rating!=null)toast(r.rating>=8?r.rating+'/10 — got it, more like this coming!':r.rating+'/10 — noted');
     else toast('Rating cleared');
     if(modalId===id)renderModal();
@@ -1364,18 +1381,46 @@ function refreshCard(id){
     const m=known.get(id)||getRec(id);
     if(!m)return;
     const src=m.title!==undefined&&m.release_date!==undefined?m:{id:m.id,title:m.title,release_date:m.year?m.year+'-01-01':'',poster_path:m.poster,vote_average:m.vote,genre_ids:m.genres};
+    const sk=c.querySelector('.chip[data-act="skip"]');
     const wrap=document.createElement('div');
-    wrap.innerHTML=cardHTML(src,{skip:!!c.querySelector('[data-act="skip"]'),dismiss:!!c.querySelector('[data-act="dismiss"]')});
-    c.replaceWith(wrap.firstChild);
+    wrap.innerHTML=cardHTML(src,{skip:!!sk,dismiss:!!c.querySelector('[data-act="dismiss"]'),
+      skipLabel:sk?sk.textContent:undefined});
+    const nc=wrap.firstChild;
+    if(c.dataset.sec)nc.dataset.sec=c.dataset.sec;
+    c.replaceWith(nc);
   });
 }
-function removeCard(id){document.querySelectorAll('.card[data-cid="'+id+'"]').forEach(c=>{c.style.opacity='0';c.style.transition='opacity .25s';setTimeout(()=>c.remove(),250);});}
+const SHOW={'#secPicks':6,'#secGems':3,'#secNew':6,'#secRate':8};
+const reserve={};
+// clearing a card shouldn't leave a hole - slide the next candidate in behind it
+function refill(sel){
+  const r=reserve[sel];
+  if(!r||!r.items.length)return;
+  const host=$(sel);if(!host)return;
+  const grid=host.querySelector('.grid');if(!grid)return;
+  const m=r.items.shift();
+  const wrap=document.createElement('div');
+  wrap.innerHTML=cardHTML(m,r.opts);
+  const card=wrap.firstChild;
+  card.dataset.sec=sel;card.style.opacity='0';
+  grid.appendChild(card);
+  requestAnimationFrame(()=>{card.style.transition='opacity .3s';card.style.opacity='1';});
+}
+function removeCard(id){
+  document.querySelectorAll('.card[data-cid="'+id+'"]').forEach(c=>{
+    const sec=c.dataset.sec;
+    c.style.opacity='0';c.style.transition='opacity .25s';
+    setTimeout(()=>{c.remove();if(sec)refill(sec);},250);
+  });
+}
 
 /* ============ nav & boot ============ */
 document.querySelectorAll('#nav button').forEach(b=>b.addEventListener('click',()=>setTab(b.dataset.tab)));
 load();
 if(!state.settings.apiKey)tab='tonight'; // shows setup hero
 render();
+// every rating should inform the engine without being asked
+if(state.settings.apiKey)setTimeout(()=>{if(needsStudy())studyRatings();},1200);
 </script>
 </body>
 </html>
