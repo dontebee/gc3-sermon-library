@@ -178,7 +178,7 @@ const GENRES={28:'Action',12:'Adventure',16:'Animation',35:'Comedy',80:'Crime',9
 const DAY=86400000;
 const BUILT_IN_KEY='__TMDB_DEFAULT_KEY__'; // replaced with the real key by the deploy workflow
 
-let state={settings:{apiKey:'',region:'US'},movies:{},skips:{},cache:{},seedDone:false,seedMissed:[],scale10:false,ratingsDone:false};
+let state={settings:{apiKey:'',region:'US'},movies:{},skips:{},cache:{},seedDone:false,seedMissed:[],scale10:false,ratingsDone:false,facts:{},names:{}};
 let tab='tonight';
 let known=new Map();      // id -> tmdb-ish object seen this session
 let modalId=null, modalDetail=null;
@@ -194,6 +194,7 @@ function load(){
       state.movies=s.movies||{}; state.skips=s.skips||{}; state.cache=s.cache||{};
       state.seedDone=!!s.seedDone; state.seedMissed=s.seedMissed||[];
       state.scale10=!!s.scale10; state.ratingsDone=!!s.ratingsDone;
+      state.facts=s.facts||{}; state.names=s.names||{};
     }
   }catch(e){}
   migrateScale();
@@ -295,6 +296,139 @@ function fresh(m){
 }
 function touch(r){r.updatedAt=Date.now();saveSoon();}
 
+/* ============ deep taste model ============ */
+// Genres are a 19-word vocabulary. What actually separates one drama from another is
+// its keywords (what it is ABOUT) and its people (who made it). We fetch both per
+// rated film, then learn feature weights from the ratings themselves.
+const FACT_TTL=45*DAY, FACT_CAP=1600;
+const SHAPE={
+  'xlen1':'tight (under 1h40)','xlen2':'standard (1h40-2h05)',
+  'xlen3':'long (2h05-2h30)','xlen4':'epic (2h30+)',
+  'xreach1':'under the radar','xreach2':'well known','xreach3':'blockbuster reach',
+  'xlangen':'English-language','xacclaim':'critically adored'
+};
+function featuresOf(f){
+  const out=[];
+  if(!f)return out;
+  for(const x of f.k||[])out.push('k'+x);
+  for(const x of f.d||[])out.push('d'+x);
+  for(const x of f.w||[])out.push('w'+x);
+  for(const x of f.c||[])out.push('c'+x);
+  for(const x of f.m||[])out.push('m'+x);
+  for(const x of f.f||[])out.push('f'+x);
+  for(const x of f.o||[])out.push('o'+x);
+  for(const x of f.g||[])out.push('g'+x);
+  // shape of the film itself \u2014 runtime stands in for pacing/patience
+  if(f.rt)out.push('xlen'+(f.rt<100?1:f.rt<125?2:f.rt<150?3:4));
+  if(f.vc)out.push('xreach'+(f.vc<1500?1:f.vc<8000?2:3));
+  if(f.l)out.push('xlang'+f.l);
+  if(f.y)out.push('xera'+(Math.floor(f.y/10)*10));
+  if((f.v||0)>=7.8)out.push('xacclaim');
+  for(const o of out)if(o[0]==='x'&&!state.names[o])
+    state.names[o]=SHAPE[o]||(o.startsWith('xera')?o.slice(4)+'s':o.slice(1));
+  return out;
+}
+function pruneFacts(){
+  const ks=Object.keys(state.facts);
+  if(ks.length<=FACT_CAP)return;
+  ks.sort((a,b)=>(state.facts[a].t||0)-(state.facts[b].t||0))
+    .slice(0,ks.length-FACT_CAP).forEach(k=>delete state.facts[k]);
+}
+async function movieFacts(id){
+  const have=state.facts[id];
+  if(have&&Date.now()-have.t<FACT_TTL)return have;
+  const d=await api('/movie/'+id,{append_to_response:'keywords,credits'});
+  const kw=((d.keywords&&d.keywords.keywords)||[]).slice(0,25);
+  const crew=(d.credits&&d.credits.crew)||[];
+  const cast=((d.credits&&d.credits.cast)||[]).slice(0,6);
+  const dir=crew.filter(c=>c.job==='Director').slice(0,2);
+  const wri=crew.filter(c=>c.department==='Writing').slice(0,3);
+  const mus=crew.filter(c=>/Composer/i.test(c.job||'')).slice(0,1);
+  const pho=crew.filter(c=>c.job==='Director of Photography').slice(0,1);
+  const co=(d.production_companies||[]).slice(0,2);
+  const rec={t:Date.now(),k:kw.map(x=>x.id),d:dir.map(x=>x.id),w:wri.map(x=>x.id),
+    c:cast.map(x=>x.id),m:mus.map(x=>x.id),f:pho.map(x=>x.id),o:co.map(x=>x.id),
+    g:(d.genres||[]).map(x=>x.id),
+    y:+((d.release_date||'').slice(0,4))||0,rt:d.runtime||0,v:d.vote_average||0,
+    vc:d.vote_count||0,l:d.original_language||''};
+  kw.forEach(x=>state.names['k'+x.id]=x.name);
+  dir.forEach(x=>state.names['d'+x.id]=x.name);
+  wri.forEach(x=>state.names['w'+x.id]=x.name);
+  cast.forEach(x=>state.names['c'+x.id]=x.name);
+  mus.forEach(x=>state.names['m'+x.id]=x.name+' (music)');
+  pho.forEach(x=>state.names['f'+x.id]=x.name+' (camera)');
+  co.forEach(x=>state.names['o'+x.id]=x.name);
+  state.facts[id]=rec;pruneFacts();
+  return rec;
+}
+const needsStudy=()=>Object.values(state.movies)
+  .filter(m=>m.rating!=null&&!state.facts[m.id]).length;
+
+let studyRunning=false;
+async function studyRatings(){
+  if(studyRunning)return;
+  const todo=Object.values(state.movies).filter(m=>m.rating!=null&&!state.facts[m.id])
+    .sort((a,b)=>b.rating-a.rating);
+  if(!todo.length)return;
+  studyRunning=true;
+  const btn=$('#studyBtn'),prog=$('#studyProg');
+  if(btn)btn.style.display='none';
+  let done=0;
+  for(const m of todo){
+    try{await movieFacts(m.id);}catch(e){}
+    done++;
+    if(prog)prog.textContent='Studying your ratings… '+done+' / '+todo.length;
+    if(done%20===0)save();
+    await sleep(90);
+  }
+  studyRunning=false;save();
+  toast('Profile deepened across '+done+' of your ratings 🧠');
+  render();
+}
+
+// Feature weights: mean-centred (so loving everything says nothing), shrunk toward
+// zero by support (one 10 isn't proof), and IDF-scaled (a tag on every film is noise).
+function tasteVector(){
+  const rated=Object.values(state.movies).filter(m=>m.rating!=null&&state.facts[m.id]);
+  if(rated.length<5)return null;
+  const mean=rated.reduce((a,m)=>a+m.rating,0)/rated.length;
+  const sd=Math.sqrt(rated.reduce((a,m)=>a+(m.rating-mean)*(m.rating-mean),0)/rated.length);
+  const centre=sd<0.6?6:mean;          // if every score is identical, fall back to an absolute pivot
+  const sum={},df={};
+  for(const m of rated){
+    const c=m.rating-centre;
+    for(const f of featuresOf(state.facts[m.id])){sum[f]=(sum[f]||0)+c;df[f]=(df[f]||0)+1;}
+  }
+  const N=rated.length,w={};
+  // cinematographer sits near the top on purpose: it is the closest honest proxy
+  // TMDB gives us for "is this a beautiful picture"
+  const BOOST={d:1.6,f:1.55,w:1.5,k:1.2,m:1.2,c:0.9,x:0.8,o:0.7,g:0.6};
+  for(const f in sum){
+    const n=df[f];
+    w[f]=(sum[f]/(n+2))*Math.log(1+N/(1+n))*(BOOST[f[0]]||1);
+  }
+  return {w,mean,centre,N,sd};
+}
+function deepScore(id,tv){
+  const f=state.facts[id];
+  if(!f||!tv)return null;
+  const fs=featuresOf(f);
+  if(!fs.length)return null;
+  let s=0;const up=[];
+  for(const k of fs){const v=tv.w[k]||0;s+=v;if(v>0.02)up.push([k,v]);}
+  // a shared cinematographer or composer is a more telling reason than a shared genre
+  up.sort((a,b)=>(b[1]*(('fmd'.includes(b[0][0]))?1.25:1))-(a[1]*(('fmd'.includes(a[0][0]))?1.25:1)));
+  return {score:s/Math.sqrt(fs.length),
+    top:up.slice(0,2).map(([k])=>state.names[k]).filter(Boolean)};
+}
+function rankedFeatures(tv,prefix,n,negative){
+  if(!tv)return [];
+  return Object.entries(tv.w)
+    .filter(([k,v])=>k[0]===prefix&&(negative?v<-0.02:v>0.02))
+    .sort((a,b)=>negative?a[1]-b[1]:b[1]-a[1]).slice(0,n)
+    .map(([k,v])=>({id:k.slice(1),key:k,name:state.names[k]||k,w:v}));
+}
+
 /* ============ taste / recommendations ============ */
 // Your ratings drive the model. Owning something is only a faint prior, and genre
 // fit is normalised to roughly -1..1 so it can nudge the ranking but never dominate
@@ -349,28 +483,63 @@ function pickSources(){
 }
 
 async function getPicks(){
-  const w=genreWeights(),mx=maxWeight(w);
+  const w=genreWeights(),mx=maxWeight(w),tv=tasteVector();
   const sources=pickSources();
   const score=new Map(),info=new Map(),why=new Map();
+  // 1. consensus: what TMDB says is close to the films you scored highest
   await Promise.all(sources.map(async m=>{
     try{
       const d=await api('/movie/'+m.id+'/recommendations',{},24);
       (d.results||[]).forEach((r,i)=>{
         if(!fresh(r))return;
         remember(r);info.set(r.id,r);
-        const add=((m.rating||8)-5)/5*(1-i*0.03);   // consensus across your favourites
+        const add=((m.rating||8)-5)/5*(1-i*0.03);
         score.set(r.id,(score.get(r.id)||0)+add);
         const cur=why.get(r.id);
-        if(!cur||add>cur.v)why.set(r.id,{v:add,title:m.title,rating:m._proxy?null:m.rating});
+        if(!cur||add>cur.v)why.set(r.id,{v:add,src:m.title,rating:m._proxy?null:m.rating});
       });
     }catch(e){}
   }));
-  for(const [id,r] of info){
-    score.set(id,score.get(id)+0.8*affinityNorm(r,w,mx)+0.25*Math.max(0,((r.vote_average||0)-6)/4));
-    const y=why.get(id);
-    if(y)r._why=y;
+  // 2. discovery by the themes and film-makers your ratings actually reward
+  if(tv){
+    const kw=rankedFeatures(tv,'k',6),bad=rankedFeatures(tv,'k',8,true);
+    const ppl=rankedFeatures(tv,'d',3).concat(rankedFeatures(tv,'w',3));
+    const jobs=[];
+    if(kw.length){
+      const p={with_keywords:kw.map(x=>x.id).join('|'),sort_by:'vote_average.desc',
+        'vote_count.gte':200,include_adult:false};
+      if(bad.length)p.without_keywords=bad.map(x=>x.id).join(',');
+      jobs.push(api('/discover/movie',p,24));
+    }
+    if(ppl.length)jobs.push(api('/discover/movie',{with_people:ppl.map(x=>x.id).join('|'),
+      sort_by:'popularity.desc','vote_count.gte':100,include_adult:false},24));
+    const res=await Promise.all(jobs.map(j=>j.catch(()=>({results:[]}))));
+    for(const d of res)for(const r of (d.results||[])){
+      if(!fresh(r)||info.has(r.id))continue;
+      remember(r);info.set(r.id,r);
+      score.set(r.id,(score.get(r.id)||0)+0.35);
+    }
   }
-  return [...info.values()].sort((a,b)=>score.get(b.id)-score.get(a.id)).slice(0,6);
+  // 3. cheap pass to shortlist, then a real content match on the survivors
+  for(const [id,r] of info)
+    score.set(id,score.get(id)+0.8*affinityNorm(r,w,mx)+0.25*Math.max(0,((r.vote_average||0)-6)/4));
+  const shortlist=[...info.values()].sort((a,b)=>score.get(b.id)-score.get(a.id)).slice(0,24);
+  if(tv){
+    await Promise.all(shortlist.map(async r=>{
+      try{await movieFacts(r.id);}catch(e){}
+    }));
+    saveSoon();
+    for(const r of shortlist){
+      const ds=deepScore(r.id,tv);
+      if(!ds)continue;
+      score.set(r.id,score.get(r.id)+2.2*ds.score);   // content match now leads
+      const y=why.get(r.id)||{};
+      y.feats=ds.top;why.set(r.id,y);
+    }
+  }
+  shortlist.sort((a,b)=>score.get(b.id)-score.get(a.id));
+  shortlist.forEach(r=>{const y=why.get(r.id);if(y)r._why=y;});
+  return shortlist.slice(0,6);
 }
 async function getGems(exclude){
   const tg=topGenres(3);
@@ -453,9 +622,14 @@ function cardHTML(m,opts={}){
   acts+='<button class="chip wl '+(r&&r.watchlist?'on':'')+'" data-act="watch" data-id="'+m.id+'">'+(r&&r.watchlist?'✓ Saved':'Watch later')+'</button>';
   if(opts.skip)acts+='<button class="chip x" data-act="skip" data-id="'+m.id+'">Haven’t seen it</button>';
   if(opts.dismiss)acts+='<button class="chip x" data-act="dismiss" data-id="'+m.id+'">Not for me</button>';
-  const why=m._why?'<div class="why">'+(m._why.genre
-    ?'Fits your '+esc(m._why.title)
-    :'Because you rated <b>'+esc(m._why.title)+'</b>'+(m._why.rating?' '+m._why.rating:''))+'</div>':'';
+  let why='';
+  if(m._why){
+    const y=m._why,bits=[];
+    if(y.genre)bits.push('Fits your '+esc(y.title));
+    else if(y.src)bits.push('Because you rated <b>'+esc(y.src)+'</b>'+(y.rating?' '+y.rating:''));
+    (y.feats||[]).forEach(f=>bits.push(esc(f)));
+    if(bits.length)why='<div class="why">'+bits.join(' · ')+'</div>';
+  }
   return '<div class="card" data-cid="'+m.id+'">'+posterHTML(m)+
     '<div class="cbody"><div class="ctitle">'+esc(title)+' <span class="yr">'+esc(year)+'</span></div>'+
     why+starsHTML(m.id,rating,false)+'<div class="cacts">'+acts+'</div></div></div>';
@@ -501,7 +675,12 @@ async function renderTonight(v){
     '<div class="panel" style="margin-bottom:20px;border-color:var(--gold)"><h3>⭐ Your ratings are ready to load</h3>'+
     '<p>The '+SEED_RATINGS.length+' movies you scored for me — from <b>The Pursuit of Happyness</b> at the top down to the ones you thought were just OK — are built in. One tap puts every score on your shelf, and the picks retune around them immediately.</p>'+
     '<div class="row" style="margin-top:10px"><button class="btn" id="ratingsBtn" data-act="loadRatings">Load my ratings ('+SEED_RATINGS.length+' movies)</button><span class="note" id="ratingsProg">'+(ratingsRunning?'Still working — hang tight…':'')+'</span></div></div>':'';
-  v.innerHTML=ratingsBanner+seedBanner+
+  const nStudy=needsStudy();
+  const studyBanner=(nStudy>0&&nRated>=5)?
+    '<div class="panel" style="margin-bottom:20px;border-color:var(--accent2)"><h3>🧠 Go deeper than genre</h3>'+
+    '<p>Genres are a 19-word vocabulary. I can read the <b>themes</b> each of your films is actually about and the <b>directors, writers and actors</b> behind them, then learn which of those you reward — and which you punish. '+nStudy+' of your rated movies haven\u2019t been studied yet.</p>'+
+    '<div class="row" style="margin-top:10px"><button class="btn" id="studyBtn" data-act="study">Study my '+nStudy+' ratings</button><span class="note" id="studyProg">'+(studyRunning?'Still working \u2014 hang tight\u2026':'')+'</span></div></div>':'';
+  v.innerHTML=studyBanner+ratingsBanner+seedBanner+
     '<div class="hero"><h1>'+(learning?'Let’s learn your taste 🎯':'Tonight’s picks 🍿')+'</h1>'+
     '<p>'+(learning
       ?'Rate a few movies you’ve already seen (just tap the stars — that’s it). After 3 or so ratings I can start picking movies <b>for you</b>.'
@@ -590,6 +769,34 @@ function renderShelf(v){
   if(sel)sel.addEventListener('change',()=>{shelfSort=sel.value;renderShelf($('#view'));});
 }
 
+// what the ratings say once you look past genre
+function deepProfileHTML(){
+  const tv=tasteVector();
+  if(!tv){
+    const n=needsStudy();
+    return '<div class="panel" style="margin-top:20px"><h3>Beyond genre</h3><p>'+
+      (n?'Tap <b>Study my ratings</b> on the Tonight tab and I\u2019ll read the themes and film-makers behind '+n+' of your rated movies \u2014 that\u2019s where the real profile lives.'
+        :'Rate a few more movies and the deeper profile appears here.')+'</p></div>';
+  }
+  const chips=(list,cls)=>list.length?'<div class="row" style="gap:6px;margin-bottom:12px">'+
+    list.map(f=>'<span class="chip '+cls+'" style="cursor:default">'+esc(f.name)+'</span>').join('')+'</div>':'';
+  const block=(label,list,cls)=>list.length?'<h4 style="margin:14px 0 6px;font-size:13px;text-transform:uppercase;letter-spacing:.8px;color:var(--faint)">'+label+'</h4>'+chips(list,cls):'';
+  const themes=rankedFeatures(tv,'k',10);
+  const avoid=rankedFeatures(tv,'k',5,true).concat(rankedFeatures(tv,'x',2,true));
+  const dirs=rankedFeatures(tv,'d',6),wris=rankedFeatures(tv,'w',6),cast=rankedFeatures(tv,'c',8);
+  return '<h2>Beyond genre</h2><div class="sub">Learned from '+tv.N+' studied ratings \u2014 your average is '+
+    tv.mean.toFixed(1)+', so anything you score below that counts against these</div>'+
+    '<div class="panel">'+
+    block('Themes you reward',themes,'on')+
+    block('Directors',dirs,'on')+
+    block('Writers',wris,'on')+
+    block('Faces you keep coming back to',cast,'wl on')+
+    block('Craft you respond to',rankedFeatures(tv,'m',3).concat(rankedFeatures(tv,'f',3)),'wl on')+
+    block('Shape of film that suits you',rankedFeatures(tv,'x',5),'wl on')+
+    (avoid.length?'<h4 style="margin:14px 0 6px;font-size:13px;text-transform:uppercase;letter-spacing:.8px;color:var(--faint)">What drags a score down</h4>'+
+      '<div class="row" style="gap:6px">'+avoid.map(f=>'<span class="chip x" style="cursor:default;border-color:var(--bad);color:var(--bad)">'+esc(f.name)+'</span>').join('')+'</div>':'')+
+    '</div>';
+}
 function renderTaste(v){
   const all=Object.values(state.movies);
   const rated=all.filter(m=>m.rating!=null);
@@ -621,6 +828,7 @@ function renderTaste(v){
     (neg.length?'<h3 style="margin-top:16px">Not really your thing</h3>'+neg.map(([g,x])=>bar(GENRES[g]||('Genre '+g),x,minW,true)).join(''):'')+
     (decs.length?'<h3 style="margin-top:16px">Your favorite eras</h3>'+decs.map(([d,n])=>bar(d,n,decs[0][1],false)).join(''):'')+
     '</div>'+
+    deepProfileHTML()+
     (favs.length?'<h2>Your hall of fame</h2><div class="sub">The movies doing the heavy lifting in your recommendations</div>'+
       gridHTML(favs.map(r=>({id:r.id,title:r.title,release_date:r.year?r.year+'-01-01':'',poster_path:r.poster,vote_average:r.vote,genre_ids:r.genres})),{}):''));
   favs.forEach(r=>remember({id:r.id,title:r.title,release_date:r.year?r.year+'-01-01':'',poster_path:r.poster,vote_average:r.vote,genre_ids:r.genres}));
@@ -901,13 +1109,14 @@ document.addEventListener('click',async e=>{
   if(act==='shelfFilter'){shelfFilter=el.dataset.val;renderShelf($('#view'));return;}
   if(act==='loadSeed'){loadSeed();return;}
   if(act==='loadRatings'){loadRatings();return;}
+  if(act==='study'){studyRatings();return;}
   if(act==='bulkMatch'){bulkMatch();return;}
   if(act==='bulkAdd'){bulkAdd();return;}
   if(act==='export'){exportBackup();return;}
   if(act==='wipe'){
     if(confirm('Erase ALL your ratings, owned movies and settings from this browser? This cannot be undone.')){
       localStorage.removeItem(LS_KEY);
-      state={settings:{apiKey:'',region:'US'},movies:{},skips:{},cache:{},seedDone:false,seedMissed:[],scale10:true,ratingsDone:false};
+      state={settings:{apiKey:'',region:'US'},movies:{},skips:{},cache:{},seedDone:false,seedMissed:[],scale10:true,ratingsDone:false,facts:{},names:{}};
       render();toast('All data erased');
     }
     return;
