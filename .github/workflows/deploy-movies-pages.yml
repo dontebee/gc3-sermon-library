@@ -1,0 +1,45 @@
+name: Deploy Marquee to GitHub Pages
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ["movies/**"]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inject TMDB key
+        env:
+          TMDB_KEY: ${{ secrets.THE_MOVIE_DATABASE__TMDB_KEY }}
+          TMDB_TOKEN: ${{ secrets.THE_MOVIE_DATABASE__TMDB_TOKEN }}
+        run: |
+          VAL="${TMDB_KEY:-$TMDB_TOKEN}"
+          if [ -n "$VAL" ]; then
+            sed -i "s|__TMDB_DEFAULT_KEY__|$VAL|" movies/index.html
+            echo "TMDB key injected"
+          else
+            echo "No TMDB secret found; the site will ask for a key on first launch"
+          fi
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: movies
+      - id: deployment
+        uses: actions/deploy-pages@v4
