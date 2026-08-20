@@ -1,5 +1,9 @@
 # Marquee — your movie shelf 🎬
 
+**Live site:** https://marquee-gc3-intranet.vercel.app (deployed on Vercel,
+project `marquee` in the `gc3-intranet` team; redeploy by re-uploading
+`index.html` to that project)
+
 A personal movie website that lives in one file (`index.html`). It lets you:
 
 - **Rate movies you've seen** — tap the stars, done. Tap the same star again to clear.
