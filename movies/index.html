@@ -31,7 +31,7 @@ main{max-width:1060px;margin:0 auto;padding:20px 16px 80px}
 h2{font-size:22px;margin:26px 0 4px}
 h2:first-child{margin-top:4px}
 .sub{color:var(--dim);font-size:14px;margin-bottom:14px}
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(158px,1fr));gap:14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(172px,1fr));gap:14px}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;display:flex;flex-direction:column}
 .poster{position:relative;aspect-ratio:2/3;background:var(--panel2);cursor:pointer;display:block;width:100%}
 .poster img{width:100%;height:100%;object-fit:cover;display:block}
@@ -42,10 +42,11 @@ h2:first-child{margin-top:4px}
 .cbody{padding:8px 10px 10px;display:flex;flex-direction:column;gap:6px;flex:1}
 .ctitle{font-size:14px;font-weight:650;line-height:1.25}
 .ctitle .yr{color:var(--faint);font-weight:400}
-.stars{display:flex;gap:1px}
-.stars button{font-size:21px;line-height:1;color:#3a4258;padding:1px 2px;transition:transform .08s}
+.stars{display:flex;gap:0;align-items:center}
+.stars button{font-size:14px;line-height:1;color:#3a4258;padding:2px 1px;transition:transform .08s}
 .stars button.lit{color:var(--gold)}
-.stars button:active{transform:scale(1.25)}
+.stars button:active{transform:scale(1.3)}
+.rnum{font-size:12px;font-weight:800;color:var(--gold);margin-left:5px}
 .cacts{display:flex;gap:6px;margin-top:auto;flex-wrap:wrap}
 .chip{font-size:12px;font-weight:650;padding:4px 9px;border-radius:999px;border:1px solid var(--line);color:var(--dim)}
 .chip:hover{border-color:var(--faint);color:var(--text)}
@@ -87,7 +88,8 @@ h2:first-child{margin-top:4px}
 .mclose{position:sticky;top:0;float:right;margin:8px 8px 0 0;font-size:22px;color:var(--dim);background:var(--panel2);border-radius:999px;width:36px;height:36px}
 .msec{margin-top:16px}
 .msec h4{font-size:13px;text-transform:uppercase;letter-spacing:.8px;color:var(--faint);margin-bottom:8px}
-.bigstars button{font-size:34px;padding:2px 4px}
+.bigstars button{font-size:24px;padding:2px 2px}
+.bigstars .rnum{font-size:16px}
 .provrow{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .prov{display:flex;align-items:center;gap:6px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:4px 8px;font-size:13px}
 .prov img{width:22px;height:22px;border-radius:5px}
@@ -146,7 +148,7 @@ const GENRES={28:'Action',12:'Adventure',16:'Animation',35:'Comedy',80:'Crime',9
 const DAY=86400000;
 const BUILT_IN_KEY='__TMDB_DEFAULT_KEY__'; // replaced with the real key by the deploy workflow
 
-let state={settings:{apiKey:'',region:'US'},movies:{},skips:{},cache:{},seedDone:false,seedMissed:[]};
+let state={settings:{apiKey:'',region:'US'},movies:{},skips:{},cache:{},seedDone:false,seedMissed:[],scale10:false};
 let tab='tonight';
 let known=new Map();      // id -> tmdb-ish object seen this session
 let modalId=null, modalDetail=null;
@@ -161,14 +163,22 @@ function load(){
       state.settings=Object.assign(state.settings,s.settings||{});
       state.movies=s.movies||{}; state.skips=s.skips||{}; state.cache=s.cache||{};
       state.seedDone=!!s.seedDone; state.seedMissed=s.seedMissed||[];
+      state.scale10=!!s.scale10;
     }
   }catch(e){}
+  migrateScale();
   // prune records with no real interaction, and stale skips
   for(const [id,m] of Object.entries(state.movies))
     if(m.rating==null && !m.owned && !m.watchlist && !m.dismissed && !(m.note||'').trim()) delete state.movies[id];
   for(const [id,t] of Object.entries(state.skips)) if(Date.now()-t>45*DAY) delete state.skips[id];
   // deploy-time key: skip the setup screen entirely when the site ships with one baked in
   if(!state.settings.apiKey&&!BUILT_IN_KEY.startsWith('__'))state.settings.apiKey=BUILT_IN_KEY;
+}
+function migrateScale(){
+  // older data used 1-5 stars; the app now scores out of 10
+  if(state.scale10)return;
+  for(const m of Object.values(state.movies))if(m.rating!=null)m.rating=Math.min(10,m.rating*2);
+  state.scale10=true;
 }
 let saveT=null,dirty=false;
 function saveSoon(){dirty=true;clearTimeout(saveT);saveT=setTimeout(save,400);}
@@ -260,7 +270,7 @@ function genreWeights(){
   const w={};
   for(const m of Object.values(state.movies)){
     let s;
-    if(m.rating!=null)s=m.rating-2.5;
+    if(m.rating!=null)s=(m.rating-5.5)/2;
     else if(m.owned)s=0.7;   // owning it is a quiet vote of confidence; real ratings weigh far more
     else continue;
     for(const g of m.genres||[])w[g]=(w[g]||0)+s;
@@ -274,13 +284,13 @@ const ratedCount=()=>Object.values(state.movies).filter(m=>m.rating!=null).lengt
 
 async function getPicks(){
   const w=genreWeights();
-  let loved=Object.values(state.movies).filter(m=>m.rating>=4)
+  let loved=Object.values(state.movies).filter(m=>m.rating>=8)
     .sort((a,b)=>b.rating-a.rating||b.updatedAt-a.updatedAt).slice(0,8);
   if(loved.length<8){
     // until there are enough real ratings, seed from a daily rotation of the best-reviewed owned movies
     const ownedPool=Object.values(state.movies).filter(m=>m.rating==null&&m.owned&&(m.vote||0)>=6.5);
     loved=loved.concat(seededShuffle(ownedPool,'ownedseed'+todayStr()+shuffleBump)
-      .slice(0,8-loved.length).map(m=>Object.assign({},m,{rating:4})));
+      .slice(0,8-loved.length).map(m=>Object.assign({},m,{rating:8})));
   }
   const score=new Map(),info=new Map();
   await Promise.all(loved.map(async m=>{
@@ -289,7 +299,7 @@ async function getPicks(){
       (d.results||[]).forEach((r,i)=>{
         if(!fresh(r))return;
         remember(r);info.set(r.id,r);
-        score.set(r.id,(score.get(r.id)||0)+(m.rating-2.5)*(1-i*0.04));
+        score.set(r.id,(score.get(r.id)||0)+((m.rating-5)/2)*(1-i*0.04));
       });
     }catch(e){}
   }));
@@ -332,9 +342,10 @@ async function getRateQueue(exclude){
 
 /* ============ shared UI bits ============ */
 function starsHTML(id,rating,big){
-  let h='<div class="stars'+(big?' bigstars':'')+'" role="group" aria-label="Rate">';
-  for(let v=1;v<=5;v++)
-    h+='<button data-act="rate" data-id="'+id+'" data-val="'+v+'" class="'+(rating>=v?'lit':'')+'" title="'+v+' star'+(v>1?'s':'')+'">★</button>';
+  let h='<div class="stars'+(big?' bigstars':'')+'" role="group" aria-label="Rate out of 10">';
+  for(let v=1;v<=10;v++)
+    h+='<button data-act="rate" data-id="'+id+'" data-val="'+v+'" class="'+(rating>=v?'lit':'')+'" title="'+v+'/10">★</button>';
+  if(rating)h+='<span class="rnum">'+rating+'</span>';
   return h+'</div>';
 }
 function posterHTML(m){
@@ -407,7 +418,7 @@ async function renderTonight(v){
       :'Chosen from '+(nRated>=3?nRated+' ratings you’ve given me':'the '+nOwned+' movies you own')+'. Picks refresh every day — and the more you rate, the sharper they get.')+'</p>'+
     (learning?'':'<p style="margin-top:10px"><button class="btn ghost small" data-act="reshuffle">🔀 Show me different picks</button></p>')+
     '</div>'+
-    (learning?'':'<h2>Picked for you tonight</h2><div class="sub">Because of what you rated 4–5 stars — and what’s in your collection</div><div id="secPicks">'+skeletons(6)+'</div>'+
+    (learning?'':'<h2>Picked for you tonight</h2><div class="sub">Because of what you rated 8–10 — and what’s in your collection</div><div id="secPicks">'+skeletons(6)+'</div>'+
       '<h2>Hidden gems you might’ve missed</h2><div class="sub">Lesser-known movies that fit your taste — the “Tuner” shelf</div><div id="secGems">'+skeletons(3)+'</div>'+
       '<h2>New &amp; worth a look</h2><div class="sub">Out in the last ~3 months, sorted for you — so nothing slips by</div><div id="secNew">'+skeletons(6)+'</div>')+
     '<h2>'+(learning?'Have you seen these?':'Keep training my taste')+'</h2>'+
@@ -424,7 +435,7 @@ async function renderTonight(v){
   };
   (async()=>{
     if(!learning){
-      await fill('#secPicks',getPicks,{dismiss:true},'Rate a few more movies 4★ or 5★ and picks will show up here.');
+      await fill('#secPicks',getPicks,{dismiss:true},'Rate a few more movies 8–10 and picks will show up here.');
       await fill('#secGems',()=>getGems(chosen),{dismiss:true},'Rate a few more movies to unlock hidden gems.');
       await fill('#secNew',()=>getNewReleases(chosen),{dismiss:true},'Nothing new matches right now — check back tomorrow.');
     }
@@ -500,13 +511,13 @@ function renderTaste(v){
   const dec={};
   all.forEach(m=>{
     if(!m.year)return;
-    const wgt=m.rating>=4?1:(m.rating==null&&m.owned?0.3:0);
+    const wgt=m.rating>=8?1:(m.rating==null&&m.owned?0.3:0);
     if(!wgt)return;
     const d=m.year.slice(0,3)+'0s';
     dec[d]=(dec[d]||0)+wgt;
   });
   const decs=Object.entries(dec).sort((a,b)=>b[1]-a[1]);
-  const favs=rated.filter(m=>m.rating>=4).sort((a,b)=>b.rating-a.rating||b.updatedAt-a.updatedAt).slice(0,12);
+  const favs=rated.filter(m=>m.rating>=8).sort((a,b)=>b.rating-a.rating||b.updatedAt-a.updatedAt).slice(0,12);
   const avg=rated.length?(rated.reduce((a,m)=>a+m.rating,0)/rated.length).toFixed(1):'—';
   const bar=(label,val,max,negBar)=>'<div class="barrow"><span>'+esc(label)+'</span><div><div class="bar'+(negBar?' barneg':'')+'" style="width:'+Math.round(Math.min(100,Math.abs(val)/Math.abs(max)*100))+'%"></div></div><span>'+(val>0?'+':'')+val.toFixed(1)+'</span></div>';
   v.innerHTML='<h2>Your taste profile</h2><div class="sub">What your ratings and your collection tell me — this is exactly what drives your picks</div>'+
@@ -514,9 +525,9 @@ function renderTaste(v){
       '<div class="stat"><b>'+rated.length+'</b><span>rated</span></div>'+
       '<div class="stat"><b>'+all.filter(m=>m.owned).length+'</b><span>owned</span></div>'+
       '<div class="stat"><b>'+all.filter(m=>m.watchlist).length+'</b><span>on watchlist</span></div>'+
-      '<div class="stat"><b>'+avg+'</b><span>avg stars</span></div></div>'+
+      '<div class="stat"><b>'+avg+'</b><span>avg score (of 10)</span></div></div>'+
     (rated.length<3&&all.filter(m=>m.owned).length<10?'<div class="empty">Rate at least 3 movies (or load your collection) and your profile appears here.</div>':
-    '<div class="panel"><h3>What you love</h3>'+(pos.length?pos.map(([g,x])=>bar(GENRES[g]||('Genre '+g),x,maxW,false)).join(''):'<p>Rate more movies 4–5★.</p>')+
+    '<div class="panel"><h3>What you love</h3>'+(pos.length?pos.map(([g,x])=>bar(GENRES[g]||('Genre '+g),x,maxW,false)).join(''):'<p>Rate more movies 8–10.</p>')+
     (neg.length?'<h3 style="margin-top:16px">Not really your thing</h3>'+neg.map(([g,x])=>bar(GENRES[g]||('Genre '+g),x,minW,true)).join(''):'')+
     (decs.length?'<h3 style="margin-top:16px">Your favorite eras</h3>'+decs.map(([d,n])=>bar(d,n,decs[0][1],false)).join(''):'')+
     '</div>'+
@@ -655,7 +666,7 @@ function bulkAdd(){
 
 /* ============ backup ============ */
 function exportBackup(){
-  const data={settings:{region:state.settings.region},movies:state.movies,skips:state.skips};
+  const data={settings:{region:state.settings.region},movies:state.movies,skips:state.skips,scale10:state.scale10};
   const blob=new Blob([JSON.stringify(data,null,1)],{type:'application/json'});
   const a=document.createElement('a');
   a.href=URL.createObjectURL(blob);
@@ -673,6 +684,8 @@ function importBackup(e){
       if(!d.movies)throw 0;
       state.movies=d.movies;
       state.skips=d.skips||{};
+      state.scale10=!!d.scale10;
+      migrateScale();
       if(d.settings&&d.settings.region)state.settings.region=d.settings.region;
       save();
       toast('Backup restored — '+Object.keys(state.movies).length+' movies');
@@ -766,7 +779,7 @@ document.addEventListener('click',async e=>{
   if(act==='wipe'){
     if(confirm('Erase ALL your ratings, owned movies and settings from this browser? This cannot be undone.')){
       localStorage.removeItem(LS_KEY);
-      state={settings:{apiKey:'',region:'US'},movies:{},skips:{},cache:{}};
+      state={settings:{apiKey:'',region:'US'},movies:{},skips:{},cache:{},seedDone:false,seedMissed:[],scale10:true};
       render();toast('All data erased');
     }
     return;
@@ -777,7 +790,7 @@ document.addEventListener('click',async e=>{
     const val=+el.dataset.val;
     r.rating=(r.rating===val)?null:val;   // tap same star again to clear
     touch(r);
-    if(r.rating!=null)toast(r.rating>=4?'★'.repeat(r.rating)+' — got it, more like this coming!':'★'.repeat(r.rating)+' — noted');
+    if(r.rating!=null)toast(r.rating>=8?r.rating+'/10 — got it, more like this coming!':r.rating+'/10 — noted');
     else toast('Rating cleared');
     if(modalId===id)renderModal();
     refreshCard(id);
