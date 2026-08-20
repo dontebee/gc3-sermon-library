@@ -322,7 +322,11 @@ function touch(r){r.updatedAt=Date.now();saveSoon();}
 // Genres are a 19-word vocabulary. What actually separates one drama from another is
 // its keywords (what it is ABOUT) and its people (who made it). We fetch both per
 // rated film, then learn feature weights from the ratings themselves.
-const FACT_TTL=45*DAY, FACT_CAP=1600;
+const FACT_TTL=45*DAY, FACT_CAP=2400;
+// Buying a film is evidence. Weaker evidence than sitting down and scoring it, so it
+// carries less weight and a milder value - but it is not nothing, and it should teach
+// the model the same things a rating does: themes, film-makers, craft.
+const OWN_W=0.35, OWN_VALUE=0.3, OWN_LOVED_BONUS=0.3;
 const SHAPE={
   'xlen1':'tight (under 1h40)','xlen2':'standard (1h40-2h05)',
   'xlen3':'long (2h05-2h30)','xlen4':'epic (2h30+)',
@@ -383,8 +387,12 @@ async function movieFacts(id){
   state.facts[id]=rec;pruneFacts();
   return rec;
 }
-const needsStudy=()=>Object.values(state.movies)
-  .filter(m=>m.rating!=null&&!state.facts[m.id]).length;
+const studyable=()=>{
+  const useOwned=state.settings.ownedSignal!==false;
+  return Object.values(state.movies)
+    .filter(m=>(m.rating!=null||(useOwned&&m.owned))&&!state.facts[m.id]);
+};
+const needsStudy=()=>studyable().length;
 
 // pull in the facts for one title the moment it is rated
 async function studySoon(id){
@@ -394,8 +402,9 @@ async function studySoon(id){
 let studyRunning=false;
 async function studyRatings(){
   if(studyRunning)return;
-  const todo=Object.values(state.movies).filter(m=>m.rating!=null&&!state.facts[m.id])
-    .sort((a,b)=>b.rating-a.rating);
+  // your own scores first, then the shelf you paid for - highest regarded first
+  const todo=studyable().sort((a,b)=>
+    (b.rating!=null)-(a.rating!=null) || (b.rating||0)-(a.rating||0) || (b.vote||0)-(a.vote||0));
   if(!todo.length)return;
   studyRunning=true;
   let prog=$('#studyProg');
@@ -416,33 +425,44 @@ async function studyRatings(){
 // Feature weights: mean-centred (so loving everything says nothing), shrunk toward
 // zero by support (one 10 isn't proof), and IDF-scaled (a tag on every film is noise).
 function tasteVector(){
-  const rated=Object.values(state.movies).filter(m=>m.rating!=null&&state.facts[m.id]);
-  if(rated.length<5)return null;
-  const mean=rated.reduce((a,m)=>a+m.rating,0)/rated.length;
-  const sd=Math.sqrt(rated.reduce((a,m)=>a+(m.rating-mean)*(m.rating-mean),0)/rated.length);
-  const centre=sd<0.6?6:mean;          // if every score is identical, fall back to an absolute pivot
-  const sum={},df={};
-  for(const m of rated){
-    const base=m.rating-centre;
+  const useOwned=state.settings.ownedSignal!==false;
+  const docs=[];
+  for(const m of Object.values(state.movies)){
+    if(!state.facts[m.id])continue;
+    if(m.rating!=null)docs.push({m:m,wt:1,rated:true});
+    else if(useOwned&&m.owned)docs.push({m:m,wt:OWN_W,rated:false});
+  }
+  const rd=docs.filter(d=>d.rated);
+  if(rd.length<3&&docs.length<12)return null;
+  const mean=rd.length?rd.reduce((a,d)=>a+d.m.rating,0)/rd.length:7;
+  const sd=rd.length?Math.sqrt(rd.reduce((a,d)=>a+(d.m.rating-mean)*(d.m.rating-mean),0)/rd.length):0;
+  const centre=(rd.length&&sd>=0.6)?mean:6;
+  const sum={},wsum={},df={};
+  for(const d of docs){
+    const m=d.m;
+    // an unrated film you own reads as a quiet yes; a rated one speaks for itself
+    const base=d.rated?(m.rating-centre):OWN_VALUE;
+    const bonus=(d.rated&&m.owned&&m.rating>=8)?OWN_LOVED_BONUS:0;   // loved AND bought
     for(const f of featuresOf(state.facts[m.id])){
       const ch=CHAN[f[0]]||'all';
-      let c=(m.sub&&ch!=='all'&&m.sub[ch]!=null)?m.sub[ch]-centre:base;
-      for(const t of m.tags||[]){
+      let c=(d.rated&&m.sub&&ch!=='all'&&m.sub[ch]!=null)?m.sub[ch]-centre:base;
+      if(d.rated)for(const t of m.tags||[]){
         const fx=TAGFX[t];
         if(fx)c+=(fx[ch]||0)+(fx.all||0);
       }
-      sum[f]=(sum[f]||0)+c;df[f]=(df[f]||0)+1;
+      c+=bonus;
+      sum[f]=(sum[f]||0)+d.wt*c;
+      wsum[f]=(wsum[f]||0)+d.wt;
+      df[f]=(df[f]||0)+1;
     }
   }
-  const N=rated.length,w={};
-  // cinematographer sits near the top on purpose: it is the closest honest proxy
-  // TMDB gives us for "is this a beautiful picture"
+  const N=docs.length,w={};
   const BOOST={d:1.6,f:1.55,w:1.5,k:1.2,m:1.2,c:0.9,x:0.8,o:0.7,g:0.6};
   for(const f in sum){
-    const n=df[f];
-    w[f]=(sum[f]/(n+2))*Math.log(1+N/(1+n))*(BOOST[f[0]]||1);
+    // weighted mean, so a big collection cannot shout down a considered score
+    w[f]=(sum[f]/(wsum[f]+2))*Math.log(1+N/(1+df[f]))*(BOOST[f[0]]||1);
   }
-  return {w,mean,centre,N,sd};
+  return {w:w,mean:mean,centre:centre,N:N,sd:sd,nRated:rd.length,nOwned:docs.length-rd.length};
 }
 function deepScore(id,tv){
   const f=state.facts[id];
@@ -860,8 +880,8 @@ function deepProfileHTML(){
   const themes=rankedFeatures(tv,'k',10);
   const avoid=rankedFeatures(tv,'k',5,true).concat(rankedFeatures(tv,'x',2,true));
   const dirs=rankedFeatures(tv,'d',6),wris=rankedFeatures(tv,'w',6),cast=rankedFeatures(tv,'c',8);
-  return '<h2>Beyond genre</h2><div class="sub">Learned from '+tv.N+' studied ratings \u2014 your average is '+
-    tv.mean.toFixed(1)+', so anything you score below that counts against these</div>'+
+  return '<h2>Beyond genre</h2><div class="sub">Learned from '+tv.nRated+' rated'+
+    (tv.nOwned?' and '+tv.nOwned+' owned':'')+' films \u2014 average score '+tv.mean.toFixed(1)+', so anything below that counts against these; owning a film counts as a quieter yes</div>'+
     '<div class="panel">'+
     block('Themes you reward',themes,'on')+
     block('Directors',dirs,'on')+
@@ -1091,7 +1111,7 @@ function buildBriefing(){
   const L=[];
   L.push('MY MOVIE TASTE - Marquee briefing ('+todayStr()+')');
   L.push(rated.length+' rated, '+all.filter(m=>m.owned).length+' owned'+
-    (tv?', '+tv.N+' studied in depth':', none studied in depth yet'));
+    (tv?' ('+tv.nRated+' rated and '+tv.nOwned+' owned films studied in depth)':', none studied in depth yet'));
   if(rated.length)L.push('Average score '+(rated.reduce((a,m)=>a+m.rating,0)/rated.length).toFixed(2)+
     ' - treat anything below that as a criticism.');
   const fmt=list=>list.map(f=>f.name+' ('+(f.w>0?'+':'')+f.w.toFixed(2)+')').join(', ');
