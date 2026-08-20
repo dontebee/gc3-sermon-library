@@ -136,10 +136,16 @@ const LS_KEY='marquee.v1';
 const TMDB='https://api.themoviedb.org/3';
 const IMG='https://image.tmdb.org/t/p/';
 const STORES=['Google Play / YouTube','Apple TV','Prime Video','Disc (DVD / Blu-ray)','Other'];
+// Donte's purchase libraries, cleaned from the lists he shared — one-tap loadable from the Tonight tab.
+const SEED_LIBRARY=[
+{store:'Google Play / YouTube',titles:['Deadpool (2016)','Passengers (2016)','Anna (2019)','Mad Max: Fury Road (2015)','300 (2006)','The Lost City (2022)','Rocky II (1979)','City of Angels (1998)','48 Hrs. (1982)','Moneyball (2011)','Jaws 2 (1978)','Jurassic World Dominion (2022)','The Dark Knight (2008)','Harriet (2019)','Burnt (2015)','A Quiet Place (2018)','Her (2013)','Pig (2021)','X-Men: The Last Stand (2006)','Cocoon: The Return (1988)','Ghost Team (2016)','Dope (2015)','Amistad (1997)','Subservience (2024)','Jason Bourne (2016)','The Craft (1996)','Till (2022)','The Black Power Mixtape (2011)','Bloodshot (2020)','Leave No Trace (2018)','A Most Violent Year (2014)','No Time to Die (2021)','Creed (2015)','Focus (2015)','The Matrix (1999)','The Northman (2022)','Aquaman (2018)','Fast & Furious Presents: Hobbs & Shaw (2019)','The Dark Knight Rises (2012)','The Grey (2011)','The Mosquito Coast (1986)','Purple Rain (1984)','Tomb Raider (2018)','Death Defying Acts (2007)','Blade Runner (1982)','Colossal (2016)','The Central Park Five (2012)','Argo (2012)','Cruella (2021)','The Wolf of Wall Street (2013)','The Bourne Ultimatum (2007)','Creed II (2018)','M3GAN (2022)','Misery (1990)','John Wick: Chapter 3 - Parabellum (2019)','Sicario: Day of the Soldado (2018)','Think Like a Man Too (2014)','Knives Out (2019)','Joker (2019)','Superman (1978)','Enemy of the State (1998)','Four Good Days (2020)','Annihilation (2018)','Avengers: Age of Ultron (2015)',"Don't Worry Darling (2022)",'A Simple Plan (1998)','Wild Rose (2018)','Game Night (2018)','Les Miserables (2012)','Free Guy (2021)','Star Wars: The Empire Strikes Back (1980)','Cocaine Bear (2023)','Avengers: Infinity War (2018)','The Twilight Saga: New Moon (2009)','What Dreams May Come (1998)','Angel Has Fallen (2019)','Rocky (1976)','Dracula Untold (2014)','Robin Hood (2018)','Incredibles 2 (2018)','Good Boys (2019)',"Charlie's Angels (2019)",'Poker Face (2022)','Crawl (2019)','Queen & Slim (2019)','Amadeus (1984)','Ant-Man and the Wasp (2018)',"Ocean's Thirteen (2007)",'JFK (1991)','The Kitchen (2019)','Cold Pursuit (2019)','Rocky V (1990)','Survivor (2015)','Training Day (2001)','Life (1999)','The Equalizer 2 (2018)','Breaking (2022)','True Story (2015)','Foxcatcher (2014)','Holmes and Watson (2018)','The Martian (2015)','Sicario (2015)','The Maze Runner (2014)','Star Wars: Attack of the Clones (2002)','Greenland (2020)','Batman v Superman: Dawn of Justice (2016)','Spider-Man: Into the Spider-Verse (2018)','Ronin (1998)','The Hunger Games: Mockingjay - Part 1 (2014)','Mission: Impossible II (2000)','The New Mutants (2020)','1917 (2019)','The Way Back (2020)','Bad Boys for Life (2020)','Us (2019)','Baby Driver (2017)','Spider-Man: Across the Spider-Verse (2023)','Ice Age (2002)','Definitely, Maybe (2008)','Quantum of Solace (2008)',"The Girl in the Spider's Web (2018)",'The Avengers (2012)','The Godfather Part II (1974)','Spencer (2021)','3:10 to Yuma (2007)','Bombshell (2019)','Runner Runner (2013)','Boomerang (1992)','Ad Astra (2019)','Ant-Man (2015)','Galveston (2018)','White Boy Rick (2018)','Get On Up (2014)',"Mo' Better Blues (1990)",'The Photograph (2020)','Mr. Peabody & Sherman (2014)','Once Upon a Time in Hollywood (2019)','The Score (2001)','Flight (2012)','Sonic the Hedgehog (2020)','Jurassic Park (1993)','Only the Brave (2017)','The Words (2012)','Uncut Gems (2019)','Oblivion (2013)','Green Zone (2010)','Hanna (2011)','Devil in a Blue Dress (1995)','A Star Is Born (2018)','The Twilight Saga: Eclipse (2010)','American Sniper (2014)','Jungle Cruise (2021)','Chef (2014)','The Bourne Supremacy (2004)','The Purge: Anarchy (2014)','Predestination (2014)','Jurassic Park III (2001)','Crazy Rich Asians (2018)','Star Wars: Return of the Jedi (1983)','Braveheart (1995)','Avengers: Endgame (2019)','Rocky III (1982)','Star Wars: The Rise of Skywalker (2019)',"Brooklyn's Finest (2010)",'Game Change (2012)','Doubt (2008)','The Family Man (2000)','Kirk Franklin: The Rebirth of Kirk Franklin','Richard Jewell (2019)','Indecent Proposal (1993)','Facing the Giants (2006)','Into the Grizzly Maze (2015)','Twilight (2008)','Mission: Impossible - Ghost Protocol (2011)','Long Shot (2019)','Spectre (2015)','Old School (2003)','Skyfall (2012)','Red Sparrow (2018)','Forgetting Sarah Marshall (2008)','Replicas (2018)','Father Stu (2022)','The Secrets We Keep (2020)','Halloween (2018)','Ghostbusters (2016)','Shooter (2007)','How the Grinch Stole Christmas (2000)','Highlander (1986)','Prisoners (2013)','The Farewell (2019)','Birdman (2014)','Angels & Demons (2009)','Collateral Beauty (2016)','Miles Ahead (2016)','The Bourne Identity (2002)','Alita: Battle Angel (2019)','Ghostbusters: Afterlife (2021)','The Big Short (2015)',"It's Complicated (2009)",'Watchmen (2009)','Ava (2020)','Breakthrough (2019)','La Luna (2011)','Transformers: Rise of the Beasts (2023)','Jerrod Carmichael: 8 (2017)','The Bourne Legacy (2012)','Man on Fire (2004)','Kingdom of Heaven (2005)','Samson (2018)','Rocky IV (1985)','Mission: Impossible - Fallout (2018)','The Town (2010)','Shaft (2019)','Jumanji: Welcome to the Jungle (2017)','The Craft: Legacy (2020)','Hollow Man (2000)','Above the Rim (1994)','Safe House (2012)','The Hunger Games (2012)','The Gentlemen (2019)','Munich (2005)','The Twilight Saga: Breaking Dawn - Part 1 (2011)','On the Basis of Sex (2018)','Captain America: Civil War (2016)','Mary Queen of Scots (2018)','Anonymous (2011)',"The Hitman's Wife's Bodyguard (2021)",'Avatar (2009)','Spider-Man: Homecoming (2017)','The Lincoln Lawyer (2011)','Jerrod Carmichael: Love at the Store (2014)','Bullet Train (2022)','The Grinch (2018)','Hell or High Water (2016)','The Old Man & the Gun (2018)','The Accountant (2016)','Solo: A Star Wars Story (2018)','The Assistant (2019)','Raiders of the Lost Ark (1981)','Dune (2021)','Up in the Air (2009)','A Walk Among the Tombstones (2014)','Venom (2018)','The Opening Act (2020)','Source Code (2011)','Instant Family (2018)','Limitless (2011)',"Robin's Wish (2020)",'Interstellar (2014)','Get Hard (2015)','Steve Jobs (2015)','Snake Eyes: G.I. Joe Origins (2021)','The Hustle (2019)','The Equalizer (2014)','Hancock (2008)','The Hunger Games: Mockingjay - Part 2 (2015)','The LEGO Movie (2014)','John Wick (2014)','Thor: Love and Thunder (2022)','Captain Phillips (2013)','Longing (2024)','The End of the Tour (2015)','Upgrade (2018)','Mission: Impossible - Rogue Nation (2015)','The Da Vinci Code (2006)','Love Jones (1997)','The Edge (1997)','Star Wars: Revenge of the Sith (2005)',"Zack Snyder's Justice League (2021)",'Star Wars (1977)','Iron Man (2008)','The Gunman (2015)','Infinite (2021)','Ambulance (2022)','Star Wars: The Phantom Menace (1999)','Heaven Is for Real (2014)','Top Gun: Maverick (2022)',"Ocean's Eleven (2001)",'This Is 40 (2012)','Mission: Impossible III (2006)','Looper (2012)','I Love You, Man (2009)','The Man in the Iron Mask (1998)','Superbad (2007)','The Patriot (2000)','The Talented Mr. Ripley (1999)','The Shawshank Redemption (1994)','The Untouchables (1987)','Guardians of the Galaxy (2014)','The Lost World: Jurassic Park (1997)','Enemy (2013)','The Informer (2019)','Brown Sugar (2002)','American Animals (2018)','Top Gun (1986)','Heat (1995)','The Departed (2006)','Cars 3 (2017)','Surrogates (2009)','American Beauty (1999)','The Dark Tower (2017)','Man of Steel (2013)','The Hunger Games: Catching Fire (2013)','Terminator: Dark Fate (2019)',"Ocean's Twelve (2004)",'Muscle Shoals (2013)','The Last Dragon (1985)',"Kirk Franklin & The Family: Whatcha Lookin' 4",'Uncle Drew (2018)','A Million Ways to Die in the West (2014)','Death on the Nile (2022)','The Social Network (2010)','All Good Things (2010)','57 Seconds (2023)','Road to Perdition (2002)','There Will Be Blood (2007)','Talladega Nights: The Ballad of Ricky Bobby (2006)','The Twilight Saga: Breaking Dawn - Part 2 (2012)','Elvis (2022)','Edge of Tomorrow (2014)','Rocky Balboa (2006)','American Skin (2021)','Dumbo (2019)','Big Hero 6 (2014)','The Lost City of Z (2017)','Chevalier (2023)','Se7en (1995)','New Jersey Drive (1995)','Takers (2010)','House of Gucci (2021)','Casino Royale (2006)','Wild (2014)','Tinker Tailor Soldier Spy (2011)','Mission: Impossible (1996)','Green Book (2018)','Gladiator (2000)']},
+{store:'Apple TV',titles:['Alexander (2004)','The Amateur (2025)','American Fiction (2023)','American Sniper (2014)','Animal Kingdom (2010)','Anyone But You (2023)','Aquaman and the Lost Kingdom (2023)','The Batman (2022)','Black Bag (2025)','BlackBerry (2023)','Blade Runner 2049 (2017)','Blue Beetle (2023)','Bob Marley: One Love (2024)','The Book of Eli (2010)','The Boys in the Boat (2023)','Bugonia (2025)',"Can't Stop Won't Stop: A Bad Boy Story (2017)",'Cape Fear (1991)','Captain America: Brave New World (2025)','Click (2006)','Clint Eastwood: A Cinematic Legacy (2021)','A Complete Unknown (2024)','The Creator (2023)','Criminal (2016)','Den of Thieves 2: Pantera (2025)','The Devil Wears Prada 2','Dirty Harry (1971)','Disclosure Day','The Drama','Dumb Money (2023)','Eddington (2025)','Eternity (2025)','Exodus: Gods and Kings (2014)','The Fall Guy (2024)','Fast X (2023)','A Few Good Men (1992)','The Flash (2023)','The Girl with the Dragon Tattoo (2011)','Good Fortune (2025)','Gran Torino (2008)','Gran Turismo (2023)','Greenland: Migration (2025)','Heretic (2024)','The Housemaid (2025)','The Hunger Games: The Ballad of Songbirds and Snakes (2023)','Hypnotic (2023)','I Got a Monster (2023)','The Grinch (2018)','Indiana Jones and the Dial of Destiny (2023)','Interstellar (2014)','The Invite','John Wick (2014)','John Wick: Chapter 2 (2017)','John Wick: Chapter 3 - Parabellum (2019)','John Wick: Chapter 4 (2023)','Jurassic World Rebirth (2025)',"Kelly's Heroes (1970)",'Killers of the Flower Moon (2023)','Knock at the Cabin (2023)','The Last Duel (2021)','Letters from Iwo Jima (2006)','Marty Supreme (2025)','Materialists (2025)','Memento (2000)','Million Dollar Baby (2004)','The Mule (2018)','Mystic River (2003)','Nine Days (2021)','One Battle After Another (2025)','The Prestige (2006)','Redux Redux (2025)','The Return (2024)','Richard Jewell (2019)','Roofman (2025)','The Running Man (2025)','Saturday Night (2024)','The Secret Life of Walter Mitty (2013)','Send Help','Shazam! Fury of the Gods (2023)','She Said (2022)','The Smashing Machine (2025)','Stranger Than Fiction (2006)','Sully (2016)','Supergirl','Thirteen Days (2000)','Transformers: Rise of the Beasts (2023)','Tron (1982)','Tron: Ares (2025)','Tron: Legacy (2010)','Trouble with the Curve (2012)','Troy (2004)','Tuner (2025)','Unforgiven (1992)','The Watchers (2024)','We Were Once a Fairytale (2009)',"We're the Millers (2013)",'Whitney Houston: I Wanna Dance with Somebody (2022)','Wicked (2024)',"The World's Fastest Indian (2005)"]}
+];
+const SEED_TOTAL=SEED_LIBRARY.reduce((a,s)=>a+s.titles.length,0);
 const GENRES={28:'Action',12:'Adventure',16:'Animation',35:'Comedy',80:'Crime',99:'Documentary',18:'Drama',10751:'Family',14:'Fantasy',36:'History',27:'Horror',10402:'Music',9648:'Mystery',10749:'Romance',878:'Sci-Fi',10770:'TV Movie',53:'Thriller',10752:'War',37:'Western'};
 const DAY=86400000;
 
-let state={settings:{apiKey:'',region:'US'},movies:{},skips:{},cache:{}};
+let state={settings:{apiKey:'',region:'US'},movies:{},skips:{},cache:{},seedDone:false,seedMissed:[]};
 let tab='tonight';
 let known=new Map();      // id -> tmdb-ish object seen this session
 let modalId=null, modalDetail=null;
@@ -153,6 +159,7 @@ function load(){
       const s=JSON.parse(raw);
       state.settings=Object.assign(state.settings,s.settings||{});
       state.movies=s.movies||{}; state.skips=s.skips||{}; state.cache=s.cache||{};
+      state.seedDone=!!s.seedDone; state.seedMissed=s.seedMissed||[];
     }
   }catch(e){}
   // prune records with no real interaction, and stale skips
@@ -376,7 +383,11 @@ function setupHTML(){
 async function renderTonight(v){
   const nRated=ratedCount();
   const learning=nRated<3;
-  v.innerHTML=
+  const seedBanner=(!state.seedDone)?
+    '<div class="panel" style="margin-bottom:20px;border-color:var(--accent)"><h3>📀 Your collection is ready to load</h3>'+
+    '<p>The movie lists you gave me — <b>'+SEED_LIBRARY[0].titles.length+' from Google Play / YouTube</b> and <b>'+SEED_LIBRARY[1].titles.length+' from Apple TV</b> — are built into this site. One tap and I’ll match them all and put them on your shelf, marked with where you own them. Takes a few minutes; keep this tab open.</p>'+
+    '<div class="row" style="margin-top:10px"><button class="btn" id="seedBtn" data-act="loadSeed">Load my collection ('+SEED_TOTAL+' movies)</button><span class="note" id="seedProg">'+(seedRunning?'Still working — hang tight…':'')+'</span></div></div>':'';
+  v.innerHTML=seedBanner+
     '<div class="hero"><h1>'+(learning?'Let’s learn your taste 🎯':'Tonight’s picks 🍿')+'</h1>'+
     '<p>'+(learning
       ?'Rate a few movies you’ve already seen (just tap the stars — that’s it). After 3 or so ratings I can start picking movies <b>for you</b>.'
@@ -515,6 +526,11 @@ function renderSettings(v){
   '<button class="btn" data-act="bulkMatch">Match my movies</button></div>'+
   '<div id="bulkOut" style="margin-top:12px"></div></div>'+
 
+  (state.seedDone&&(state.seedMissed||[]).length?
+    '<hr class="sp"><div class="panel"><h3>From your collection, I couldn’t match these</h3>'+
+    '<p>Search for them by hand on the Search tab, or paste them above with a corrected title/year:</p>'+
+    (state.seedMissed||[]).map(t=>'<div class="improw"><span class="miss">'+esc(t)+'</span></div>').join('')+'</div>':'')+
+
   '<hr class="sp"><div class="panel"><h3>Backup</h3>'+
   '<p>Your shelf lives in this browser. Export a backup now and then (or to move to a new phone/computer).</p>'+
   '<div class="row"><button class="btn ghost" data-act="export">⬇ Export backup</button>'+
@@ -524,6 +540,50 @@ function renderSettings(v){
   if(fi)fi.addEventListener('change',importBackup);
   const ri=$('#regionInput');
   if(ri)ri.addEventListener('change',()=>{state.settings.region=(ri.value||'US').toUpperCase().slice(0,2);saveSoon();toast('Region saved');});
+}
+
+/* ============ seed library (Donte's collection) ============ */
+function parseTitleLine(line){
+  const m=line.match(/^(.*?)\s*\((\d{4})\)\s*$/);
+  return {title:(m?m[1]:line).trim(),year:m?m[2]:null};
+}
+async function matchTitle(title,year){
+  try{
+    let d=await api('/search/movie',{query:title,primary_release_year:year||undefined,include_adult:false});
+    let hit=(d.results||[])[0]||null;
+    if(!hit&&year){d=await api('/search/movie',{query:title,include_adult:false});hit=(d.results||[])[0]||null;}
+    return hit;
+  }catch(e){return null;}
+}
+let seedRunning=false;
+async function loadSeed(){
+  if(seedRunning||state.seedDone)return;
+  seedRunning=true;
+  const btn=$('#seedBtn'),prog=$('#seedProg');
+  if(btn)btn.style.display='none';
+  const missed=[];
+  let done=0,added=0;
+  for(const src of SEED_LIBRARY){
+    for(const line of src.titles){
+      const {title,year}=parseTitleLine(line);
+      const hit=await matchTitle(title,year);
+      if(hit){
+        remember(hit);
+        const r=record(hit.id);
+        if(r){r.owned=true;if(!r.stores.includes(src.store))r.stores.push(src.store);r.updatedAt=Date.now();added++;}
+      }else missed.push(line+'  ('+src.store+')');
+      done++;
+      if(prog)prog.textContent='Adding your movies… '+done+' / '+SEED_TOTAL+' checked, '+added+' on the shelf';
+      if(done%25===0)save();
+      await sleep(110);
+    }
+  }
+  state.seedDone=true;
+  state.seedMissed=missed;
+  seedRunning=false;
+  save();
+  toast('Your collection is in — '+added+' movies on your shelf 📀');
+  render();
 }
 
 /* ============ bulk import ============ */
@@ -680,6 +740,7 @@ document.addEventListener('click',async e=>{
   if(act==='saveKey'){saveKeyFlow();return;}
   if(act==='reshuffle'){shuffleBump++;render();return;}
   if(act==='shelfFilter'){shelfFilter=el.dataset.val;renderShelf($('#view'));return;}
+  if(act==='loadSeed'){loadSeed();return;}
   if(act==='bulkMatch'){bulkMatch();return;}
   if(act==='bulkAdd'){bulkAdd();return;}
   if(act==='export'){exportBackup();return;}

@@ -1,8 +1,18 @@
 # Marquee — your movie shelf 🎬
 
-**Live site:** https://marquee-gc3-intranet.vercel.app (deployed on Vercel,
-project `marquee` in the `gc3-intranet` team; redeploy by re-uploading
-`index.html` to that project)
+**Live site:** https://dontebee.github.io/gc3-sermon-library/ — deployed by the
+`deploy-movies-pages.yml` GitHub Actions workflow (runs on demand and whenever
+`movies/**` changes on `main`). No login, fully public.
+
+There is also a Vercel copy at https://marquee-gc3-intranet.vercel.app
+(project `marquee`, `gc3-intranet` team), but that team's default Deployment
+Protection puts a Vercel login wall in front of it; turn off Vercel
+Authentication in the project's settings if you want to use that URL.
+
+The site ships with Donte's Google Play / YouTube and Apple TV purchase
+libraries embedded (`SEED_LIBRARY` in `index.html`) — first launch offers a
+one-tap "Load my collection" that matches them against TMDB and fills the
+shelf.
 
 A personal movie website that lives in one file (`index.html`). It lets you:
 
