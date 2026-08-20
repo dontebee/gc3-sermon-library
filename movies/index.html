@@ -275,7 +275,7 @@ async function api(path,params={},ttlHours=0){
 }
 function slim(d){
   if(!d||!Array.isArray(d.results))return d;
-  return {results:d.results.slice(0,20).map(m=>({id:m.id,title:m.title,release_date:m.release_date,poster_path:m.poster_path,vote_average:m.vote_average,vote_count:m.vote_count,genre_ids:m.genre_ids}))};
+  return {results:d.results.slice(0,20).map(m=>({id:m.id,title:m.title,release_date:m.release_date,poster_path:m.poster_path,vote_average:m.vote_average,vote_count:m.vote_count,genre_ids:m.genre_ids,original_language:m.original_language}))};
 }
 function pruneCache(){
   const keys=Object.keys(state.cache);
@@ -327,6 +327,14 @@ const FACT_TTL=45*DAY, FACT_CAP=2400;
 // carries less weight and a milder value - but it is not nothing, and it should teach
 // the model the same things a rating does: themes, film-makers, craft.
 const OWN_W=0.35, OWN_VALUE=0.3, OWN_LOVED_BONUS=0.3;
+// Subtitles are a real cost for some people. This is a thumb on the scale, not a ban:
+// a foreign film has to be markedly better than an English one to earn a slot.
+const LANG_PEN={rarely:1.2,sometimes:0.5,freely:0};
+const langPref=()=>state.settings.langPref||'rarely';
+const langPenalty=m=>{
+  const l=m.original_language||m.l;
+  return (!l||l==='en')?0:(LANG_PEN[langPref()]||0);
+};
 const SHAPE={
   'xlen1':'tight (under 1h40)','xlen2':'standard (1h40-2h05)',
   'xlen3':'long (2h05-2h30)','xlen4':'epic (2h30+)',
@@ -577,7 +585,8 @@ async function getPicks(){
   }
   // 3. cheap pass to shortlist, then a real content match on the survivors
   for(const [id,r] of info)
-    score.set(id,score.get(id)+0.8*affinityNorm(r,w,mx)+0.25*Math.max(0,((r.vote_average||0)-6)/4));
+    score.set(id,score.get(id)+0.8*affinityNorm(r,w,mx)
+      +0.25*Math.max(0,((r.vote_average||0)-6)/4)-langPenalty(r));
   const shortlist=[...info.values()].sort((a,b)=>score.get(b.id)-score.get(a.id)).slice(0,24);
   if(tv){
     await Promise.all(shortlist.map(async r=>{
@@ -607,7 +616,7 @@ async function getGems(exclude){
   const w=genreWeights(),mx=maxWeight(w);
   const list=(d.results||[]).filter(m=>fresh(m)&&!exclude.has(m.id));
   list.forEach(remember);
-  list.sort((a,b)=>affinityNorm(b,w,mx)-affinityNorm(a,w,mx));
+  list.sort((a,b)=>(affinityNorm(b,w,mx)-langPenalty(b))-(affinityNorm(a,w,mx)-langPenalty(a)));
   const top=list.slice(0,12);
   top.forEach(m=>{m._why={title:tg.map(g=>GENRES[g]).filter(Boolean).join(' + '),genre:true};});
   return seededShuffle(top,'gems'+todayStr()+shuffleBump).slice(0,9);
@@ -622,7 +631,7 @@ async function getNewReleases(exclude){
   const w=genreWeights(),mx=maxWeight(w);
   const list=(d.results||[]).filter(m=>fresh(m)&&!exclude.has(m.id));
   list.forEach(remember);
-  list.sort((a,b)=>affinityNorm(b,w,mx)-affinityNorm(a,w,mx));
+  list.sort((a,b)=>(affinityNorm(b,w,mx)-langPenalty(b))-(affinityNorm(a,w,mx)-langPenalty(a)));
   return list.slice(0,14);
 }
 // the training queue should also look like your shelf, not a generic top-100
@@ -643,7 +652,7 @@ async function getRateQueue(exclude){
     seen.add(m.id);
     if(fresh(m)){remember(m);pool.push(m);}
   }
-  pool.sort((a,b)=>affinityNorm(b,w,mx)-affinityNorm(a,w,mx));
+  pool.sort((a,b)=>(affinityNorm(b,w,mx)-langPenalty(b))-(affinityNorm(a,w,mx)-langPenalty(a)));
   return seededShuffle(pool.slice(0,30),'rate'+todayStr()+shuffleBump).slice(0,20);
 }
 
@@ -942,7 +951,14 @@ function renderSettings(v){
 
   '<hr class="sp"><div class="panel"><h3>How picks are chosen</h3>'+
   '<p>Your ratings always lead. Owning a movie counts as a faint hint on top of that - useful early on, but if your shelf is full of things you bought and never loved, switch it off and go on ratings alone.</p>'+
-  '<div class="storeopts"><label><input type="checkbox" data-act="ownedSignal"'+(state.settings.ownedSignal!==false?' checked':'')+'> Let my collection nudge the picks</label></div></div>'+
+  '<div class="storeopts"><label><input type="checkbox" data-act="ownedSignal"'+(state.settings.ownedSignal!==false?' checked':'')+'> Let my collection nudge the picks</label></div>'+
+  '<div class="row" style="margin-top:12px"><label class="note" for="langSel">Foreign-language films:</label>'+
+  '<select id="langSel" data-act="langPref" style="width:auto">'+
+    '<option value="rarely"'+(langPref()==='rarely'?' selected':'')+'>Rarely \u2014 only if outstanding</option>'+
+    '<option value="sometimes"'+(langPref()==='sometimes'?' selected':'')+'>Sometimes</option>'+
+    '<option value="freely"'+(langPref()==='freely'?' selected':'')+'>No preference</option>'+
+  '</select></div>'+
+  '<p class="note">A nudge, not a ban \u2014 a subtitled film has to clearly out-score an English one to take a slot.</p></div>'+
 
   '<hr class="sp"><div class="panel"><h3>Import the movies I own 📀</h3>'+
   '<p><b>The honest answer:</b> Google Play/YouTube and Apple don’t let apps read your purchase library. The fastest reliable way is to paste your titles below and I’ll match them for you:</p>'+
@@ -1112,6 +1128,7 @@ function buildBriefing(){
   L.push('MY MOVIE TASTE - Marquee briefing ('+todayStr()+')');
   L.push(rated.length+' rated, '+all.filter(m=>m.owned).length+' owned'+
     (tv?' ('+tv.nRated+' rated and '+tv.nOwned+' owned films studied in depth)':', none studied in depth yet'));
+  L.push('Foreign-language films: '+langPref()+' (English is my default).');
   if(rated.length)L.push('Average score '+(rated.reduce((a,m)=>a+m.rating,0)/rated.length).toFixed(2)+
     ' - treat anything below that as a criticism.');
   const fmt=list=>list.map(f=>f.name+' ('+(f.w>0?'+':'')+f.w.toFixed(2)+')').join(', ');
@@ -1349,9 +1366,12 @@ document.addEventListener('click',async e=>{
     const r=record(id);if(!r)return;
     r.watchlist=!r.watchlist;
     touch(r);
-    toast(r.watchlist?'Saved for later 🔖':'Removed from watchlist');
-    if(modalId===id)renderModal();
-    refreshCard(id);
+    toast(r.watchlist?'Saved for later \ud83d\udd16':'Removed from watchlist');
+    if(modalId===id){renderModal();refreshCard(id);return;}
+    // saving it settles the card, so clear it out of a suggestion row and refill behind
+    const card=el.closest('.card');
+    if(r.watchlist&&card&&card.dataset.sec)removeCard(id);
+    else refreshCard(id);
     return;
   }
   if(act==='dismiss'){
@@ -1377,6 +1397,14 @@ document.addEventListener('click',async e=>{
   }
 });
 document.addEventListener('change',e=>{
+  const lp=e.target.closest('[data-act="langPref"]');
+  if(lp){
+    state.settings.langPref=lp.value;
+    save();
+    toast(lp.value==='rarely'?'Foreign films will show up rarely':
+      lp.value==='freely'?'No language preference':'Foreign films will show up sometimes');
+    return;
+  }
   const os=e.target.closest('[data-act="ownedSignal"]');
   if(os){
     state.settings.ownedSignal=os.checked;
