@@ -23,6 +23,18 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+      - name: Inject TMDB key
+        env:
+          TMDB_KEY: ${{ secrets.THE_MOVIE_DATABASE__TMDB_KEY }}
+          TMDB_TOKEN: ${{ secrets.THE_MOVIE_DATABASE__TMDB_TOKEN }}
+        run: |
+          VAL="${TMDB_KEY:-$TMDB_TOKEN}"
+          if [ -n "$VAL" ]; then
+            sed -i "s|__TMDB_DEFAULT_KEY__|$VAL|" movies/index.html
+            echo "TMDB key injected"
+          else
+            echo "No TMDB secret found; the site will ask for a key on first launch"
+          fi
       - uses: actions/configure-pages@v5
         with:
           enablement: true
