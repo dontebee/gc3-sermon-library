@@ -133,7 +133,6 @@ def recent_videos():
                 out.append(d)
     if not out:
         print("No videos returned from YouTube (checked uploads and live streams).")
-        print("Likely the host IP was rate-limited. The run is not failed; it retries next week.")
         for ln in (last_stderr or "").strip().splitlines()[-3:]:
             print("  yt-dlp:", ln)
     return out
@@ -254,6 +253,18 @@ def main():
     print(f"\nWeekly run complete. checked={checked} added={added} "
           f"skipped_existing={skip_existing} skipped_filtered={skip_filtered} "
           f"skipped_no_captions={skip_nocaps} errored={errored}")
+
+    # A healthy run always lists the channel's recent uploads, so checked is
+    # normally RECENT_LIMIT-ish even on a week with nothing new. checked == 0
+    # means the listing itself failed (YouTube bot-checking the runner's IP,
+    # most likely) - and swallowing that froze the library for three straight
+    # weeks in August 2026 while every run reported success. Fail loudly so
+    # GitHub emails the owner instead of the calendar quietly going stale.
+    if checked == 0:
+        print("\nFAILING LOUDLY: YouTube returned nothing, so this run verified nothing.")
+        print("Fix options: run `python weekly_update.py` from a residential IP to catch up,")
+        print("and/or set the YT_COOKIES secret (see weekly.yml) so the runner can list videos.")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
