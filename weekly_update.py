@@ -33,8 +33,13 @@ CHANNEL = "https://www.youtube.com/@godchaserschurch"
 TABS = ["/videos", "/streams"]  # regular uploads AND past live streams
 RECENT_LIMIT = 12
 MIN_DURATION_SECONDS = 1200  # 20 minutes. The supervised backfill used 600 (10 min).
-EXCLUDE_KEYWORDS = ["official video", "lyric", "worship", "cover",
-                    "trailer", "promo", "behind the scenes"]
+# Phrases, never bare words. "worship" alone discarded a sermon actually titled
+# "EXPENSIVE WORSHIP" (2026-08-17), and "cover" would do the same to any sermon
+# about covering. Anything dropped here is now printed with the phrase that did
+# it, so a too-greedy entry shows up in the log instead of silently eating weeks.
+EXCLUDE_KEYWORDS = ["official video", "lyric video", "cover song", "(cover)",
+                    "worship wednesday", "worship experience", "worship night",
+                    "worship set", "trailer", "promo", "behind the scenes"]
 ENRICH_MODEL = "claude-sonnet-4-6"  # strong + cost-effective for extraction. Change to
 # "claude-haiku-4-5" for cheaper, or "claude-opus-4-8" for maximum depth.
 
@@ -179,8 +184,77 @@ def fetch_captions(video_id, outdir):
     return hits[0] if hits else None
 
 
+# Guests title their videos "<Name> At GodChasers Church"; PD's own read
+# "Pastor Donte Banks". This used to be hardcoded to PD, which filed every guest
+# sermon under PD's voice and quietly polluted the corpus.
+PD_ALIASES = {"donte banks", "pastor donte", "donte", "pd"}
+_TITLE_PREFIXES = r"pastor|ps|rev\.?|evangelist|bishop|dr\.?|min\.?|apostle|elder|prophet"
+_NOT_NAMES = {"service", "live", "stream", "worship", "experience", "church",
+              "sunday", "night", "morning", "evening", "conference", "am", "pm"}
+
+
+def derive_speaker(title):
+    """Who preached, read off the title. Falls back to PD when there is no clear
+    guest name, which is how the channel labels an ordinary Sunday."""
+    t = re.sub(r"^[^\w(\[]+", "", title or "").strip()
+    m = re.search(r"([A-Za-z][A-Za-z.'\-]*(?:\s+[A-Za-z][A-Za-z.'\-]*){0,3})\s+At\s+GodChasers",
+                  t, re.I)
+    if m:
+        name = re.sub(rf"^(?:{_TITLE_PREFIXES})\s+", "", m.group(1).strip(), flags=re.I).strip()
+        tokens = [w.lower() for w in name.split()]
+        if tokens and not any(w in _NOT_NAMES for w in tokens):
+            if name.lower() in PD_ALIASES:
+                return "PD"
+            return name.title() if name.isupper() else name
+    return "PD"
+
+
+def save_analysis_children(sermon_id, analysis):
+    """Word studies and frameworks belong to the sermon; replace, never double up."""
+    ws = [{"sermon_id": sermon_id, **{k: w.get(k) for k in ("term", "language", "gloss", "usage", "quote")}}
+          for w in (analysis.get("word_studies") or []) if w.get("term")]
+    fw = [{"sermon_id": sermon_id, **{k: f.get(k) for k in ("name", "description", "quote")}}
+          for f in (analysis.get("frameworks") or []) if f.get("name")]
+    if ws:
+        sb.table("word_studies").insert(ws).execute()
+    if fw:
+        sb.table("frameworks").insert(fw).execute()
+    return len(ws), len(fw)
+
+
+def heal_textless():
+    """Sermons saved without a transcript because YouTube had not produced captions
+    yet. Retry them every run: the row already exists, so the sermon is never
+    missing from the library, and it fills itself in the week captions appear."""
+    rows = (sb.table("sermons").select("id,youtube_video_id,title")
+            .is_("body", "null").not_.is_("youtube_video_id", "null")
+            .order("preached_date", desc=True).limit(25).execute().data)
+    healed = 0
+    for r in rows:
+        with tempfile.TemporaryDirectory() as tmp:
+            vtt = fetch_captions(r["youtube_video_id"], tmp)
+            if not vtt:
+                print("  still no captions:", (r["title"] or "")[:60])
+                continue
+            body = clean_vtt(vtt)
+        analysis = enrich(r["title"], body) if ANTHROPIC_API_KEY else None
+        patch = {"body": body}
+        if analysis:
+            patch["series"] = (analysis.get("series") or "").strip() or None
+            patch["big_idea"] = analysis.get("big_idea")
+            patch["scriptures"] = analysis.get("scriptures") or []
+            patch["themes"] = analysis.get("themes") or []
+            patch["quotes"] = analysis.get("quotes") or []
+        sb.table("sermons").update(patch).eq("id", r["id"]).execute()
+        n_ws, n_fw = save_analysis_children(r["id"], analysis) if analysis else (0, 0)
+        healed += 1
+        print(f"  HEALED ({n_ws} word studies, {n_fw} frameworks):", (r["title"] or "")[:60])
+    return healed, len(rows)
+
+
 def main():
     checked = added = skip_existing = skip_filtered = skip_nocaps = errored = 0
+    filtered_titles = []
     for d in recent_videos():
         checked += 1
         try:
@@ -190,25 +264,32 @@ def main():
             avail = d.get("availability")
             if avail and avail != "public":
                 skip_filtered += 1
+                print(f"SKIPPED [not public: {avail}]:", title)
                 continue
             if dur and dur < MIN_DURATION_SECONDS:
                 skip_filtered += 1
+                print(f"SKIPPED [{int(dur) // 60}m, under the {MIN_DURATION_SECONDS // 60}m floor]:", title)
                 continue
-            if any(k in title.lower() for k in EXCLUDE_KEYWORDS):
+            hit = next((k for k in EXCLUDE_KEYWORDS if k in title.lower()), None)
+            if hit:
                 skip_filtered += 1
+                filtered_titles.append((hit, title))
+                print(f"SKIPPED [matched '{hit}']:", title)
                 continue
             if sb.table("sermons").select("id").eq("youtube_video_id", vid).execute().data:
                 skip_existing += 1
                 continue
+            # No captions used to mean the sermon was dropped entirely and forgotten.
+            # Save it text-less instead: it shows on the calendar immediately, and
+            # heal_textless() fills in the transcript once YouTube catches up.
             with tempfile.TemporaryDirectory() as tmp:
                 vtt = fetch_captions(vid, tmp)
-                if not vtt:
-                    skip_nocaps += 1
-                    print("NO CAPTIONS YET:", title)
-                    continue
-                body = clean_vtt(vtt)
+                body = clean_vtt(vtt) if vtt else None
+            if body is None:
+                skip_nocaps += 1
+                print("NO CAPTIONS YET (saving without text):", title)
 
-            analysis = enrich(title, body)
+            analysis = enrich(title, body) if body else None
             upload = d.get("upload_date")
             iso = f"{upload[:4]}-{upload[4:6]}-{upload[6:]}" if upload and len(upload) == 8 else None
             row = {
@@ -217,7 +298,7 @@ def main():
                 "preached_date": iso,
                 "youtube_url": d.get("webpage_url") or f"https://www.youtube.com/watch?v={vid}",
                 "duration_seconds": int(dur) if dur else None,
-                "speaker": "PD",
+                "speaker": derive_speaker(title),
                 "verified": False,
                 "body": body,
             }
@@ -233,26 +314,40 @@ def main():
 
             n_ws = n_fw = 0
             if analysis and sermon_id:
-                ws = [{"sermon_id": sermon_id, **{k: w.get(k) for k in ("term", "language", "gloss", "usage", "quote")}}
-                      for w in (analysis.get("word_studies") or []) if w.get("term")]
-                fw = [{"sermon_id": sermon_id, **{k: f.get(k) for k in ("name", "description", "quote")}}
-                      for f in (analysis.get("frameworks") or []) if f.get("name")]
-                if ws:
-                    sb.table("word_studies").insert(ws).execute()
-                if fw:
-                    sb.table("frameworks").insert(fw).execute()
-                n_ws, n_fw = len(ws), len(fw)
+                n_ws, n_fw = save_analysis_children(sermon_id, analysis)
 
             added += 1
-            tag = f"ENRICHED ({n_ws} word studies, {n_fw} frameworks)" if analysis else "RAW (no analysis key)"
+            if analysis:
+                tag = f"ENRICHED ({n_ws} word studies, {n_fw} frameworks)"
+            elif body is None:
+                tag = "NO TEXT YET (heals when captions land)"
+            else:
+                tag = "RAW (no analysis key)"
             print(f"ADDED [{tag}]:", title)
         except Exception as e:
             errored += 1
             print("ERROR on video:", d.get("id"), repr(e))
 
-    print(f"\nWeekly run complete. checked={checked} added={added} "
-          f"skipped_existing={skip_existing} skipped_filtered={skip_filtered} "
-          f"skipped_no_captions={skip_nocaps} errored={errored}")
+    print("\nRetrying sermons still missing a transcript:")
+    healed, pending = heal_textless()
+
+    print(f"\nWeekly run complete. checked={checked} added={added} " 
+          f"saved_without_text={skip_nocaps} healed={healed} " 
+          f"skipped_existing={skip_existing} skipped_filtered={skip_filtered} " 
+          f"errored={errored}")
+
+    # A filter that eats a real sermon is invisible unless it says so. Name the
+    # phrase that did it every time, so the next over-greedy entry is caught in
+    # one glance instead of after three missing weeks.
+    if filtered_titles:
+        print(f"\nFiltered out {len(filtered_titles)} video(s) - confirm none was a sermon:")
+        for kw, t in filtered_titles:
+            print(f"  {kw!r} -> {t}")
+
+    still = pending - healed
+    if still > 0:
+        print(f"\n{still} sermon(s) sit in the library with no transcript yet. They are")
+        print("visible on the calendar and fill themselves in on a later run.")
 
     # A healthy run always lists the channel's recent uploads, so checked is
     # normally RECENT_LIMIT-ish even on a week with nothing new. checked == 0
