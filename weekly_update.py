@@ -37,9 +37,11 @@ MIN_DURATION_SECONDS = 1200  # 20 minutes. The supervised backfill used 600 (10 
 # "EXPENSIVE WORSHIP" (2026-08-17), and "cover" would do the same to any sermon
 # about covering. Anything dropped here is now printed with the phrase that did
 # it, so a too-greedy entry shows up in the log instead of silently eating weeks.
+# "worship experience" must NOT be here: regular Sunday titles end in
+# "- Worship Experience - <date>", and the phrase silently dropped the
+# 07/12 and 08/23 Sunday services. Worship Wednesday is the music marker.
 EXCLUDE_KEYWORDS = ["official video", "lyric video", "cover song", "(cover)",
-                    "worship wednesday", "worship experience", "worship night",
-                    "worship set", "trailer", "promo", "behind the scenes"]
+                    "worship wednesday", "trailer", "promo", "behind the scenes"]
 ENRICH_MODEL = "claude-sonnet-4-6"  # strong + cost-effective for extraction. Change to
 # "claude-haiku-4-5" for cheaper, or "claude-opus-4-8" for maximum depth.
 
