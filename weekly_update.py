@@ -292,8 +292,18 @@ def main():
                 print("NO CAPTIONS YET (saving without text):", title)
 
             analysis = enrich(title, body) if body else None
-            upload = d.get("upload_date")
-            iso = f"{upload[:4]}-{upload[4:6]}-{upload[6:]}" if upload and len(upload) == 8 else None
+            # upload_date is UTC, so an 11:21am Central Sunday livestream is
+            # reported as Monday. That is why 331 sermons sat on Mondays and
+            # only 51 on Sundays. release_timestamp is when the stream actually
+            # started; read it locally and fall back only if it is missing.
+            iso = None
+            rel = d.get("release_timestamp")
+            if rel:
+                import datetime as _dt
+                iso = _dt.datetime.fromtimestamp(int(rel)).date().isoformat()
+            else:
+                upload = d.get("upload_date")
+                iso = f"{upload[:4]}-{upload[4:6]}-{upload[6:]}" if upload and len(upload) == 8 else None
             row = {
                 "youtube_video_id": vid,
                 "title": title,
