@@ -119,6 +119,32 @@ scraper's error text.**
 The ingest skips these with the reason "scraper error, not a transcript"
 rather than "too short", so the skip list says something useful.
 
+## Tolan Morgan: eleven sermons, not yet loaded
+
+Pastor Tolan J. Morgan (Fellowship Bible Baptist Church, "The Ship", Warner
+Robins GA) was studied in September 2026: eleven sermons transcribed and read
+end to end to build "Tolan Morgan - Preaching Style Reference", which lives in
+Drive. The analysis was saved. The transcripts were not.
+
+They are in no Drive folder, no repo and no table. Searched by video id as a
+filename, by sermon title, and by "Tolan", "Morgan", "fbbcwarnerrobins",
+"Fellowship Bible" and "Warner Robins" in full text; checked `Guest-Speakers`,
+`_staging`, `_pipeline-files` and the exemplar folder. Only the reference
+comes back.
+
+What survived is the eleven video ids, recorded inside that document.
+`fetch_tolan_morgan.py` re-pulls them and writes a CSV in this ingest's own
+column shape:
+
+    python3 fetch_tolan_morgan.py
+    python3 exemplar_ingest.py --file tolan_morgan_sermons.csv \
+        --preacher "Tolan Morgan" --ministry "Fellowship Bible Baptist Church" \
+        --apply
+
+Two of the eleven are inside full-service videos and do not start at zero:
+Signs of Life at 29:00, How to Stop the Bleeding at 1:38:00. The fetch trims
+to the sermon, so neither arrives with an hour of worship in front of it.
+
 ## Skip rules
 
 A row is not inserted if the body is empty, is under 2,000 characters, is a
