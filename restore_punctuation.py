@@ -81,6 +81,10 @@ SPARSE_THRESHOLD = 2.0
 # at the seams are a rounding error.
 WORDS_PER_CHUNK = 1200
 
+# Sermons per insert batch. Small enough that an interrupted run loses
+# little, large enough not to make a round trip per sermon.
+WRITE_EVERY = 10
+
 SYSTEM_PROMPT = """\
 You restore punctuation to sermon transcripts that were produced by automatic \
 speech recognition and arrived with none.
@@ -378,9 +382,13 @@ def write_rows(records, batch_size=5):
                           params={"on_conflict": "source,source_id"},
                           data=json.dumps(batch), timeout=180)
         if r.status_code >= 300:
-            raise SystemExit(f"ERROR: insert failed ({r.status_code}): {r.text[:300]}")
+            # Do not abort. On a multi-hour run, one rejected batch must not
+            # throw away every sermon that already succeeded. The rows are
+            # keyed on (source, source_id) and upserted, so a later run
+            # simply redoes whatever did not land.
+            print(f"  !! batch failed ({r.status_code}): {r.text[:200]}", flush=True)
+            continue
         written += len(batch)
-        print(f"  ... stored {written}/{len(records)}", flush=True)
     return written
 
 
@@ -483,9 +491,28 @@ def main():
             "char_len_restored": len(restored),
         }
 
+    # Write as we go. The previous shape collected all 901 sermons and wrote
+    # once at the end, which meant a timeout or a crash at minute 340 threw
+    # away every sermon already paid for. The job's own resume logic could
+    # not help, because a killed run had written nothing to resume from.
+    # Flushing in batches makes an interrupted run cost minutes, not hours.
+    pending, stored = [], 0
+
+    def flush(force=False):
+        nonlocal pending, stored
+        if not args.apply:
+            return
+        if pending and (force or len(pending) >= WRITE_EVERY):
+            stored += write_rows(pending)
+            pending = []
+            print(f"  ... {stored}/{len(work)} sermons stored", flush=True)
+
     with ThreadPoolExecutor(max_workers=args.workers) as pool:
         for rec in pool.map(one, work):
             (records if rec["verified"] else failures).append(rec)
+            pending.append(rec)
+            flush()
+    flush(force=True)
 
     all_recs = records + failures
     chunks_total = sum(r["chunks_total"] for r in all_recs)
@@ -532,10 +559,9 @@ def main():
         print("\nDRY RUN. Nothing written. Pass --apply to store.")
         return
 
-    # Partial rows are stored too, with verified=false, so a later run can see
-    # what to retry. Readers filter on verified.
-    written = write_rows(records + failures)
-    print(f"\nWrote {written} rows ({len(records)} verified).")
+    # Everything was written incrementally above, partial rows included, so a
+    # later run can see what to retry. Readers do not filter on verified.
+    print(f"\nWrote {stored} rows ({len(records)} fully punctuated).")
 
 
 if __name__ == "__main__":
