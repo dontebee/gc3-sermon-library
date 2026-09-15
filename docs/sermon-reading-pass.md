@@ -21,9 +21,12 @@ judged, and it stays a human judgment even then.
   corpora, runs the extractor, writes (or emits SQL for, or just reports).
   Same dry-run-by-default shape as `exemplar_ingest.py`.
 - `.github/workflows/sermon_reading_pass.yml` — a `workflow_dispatch` job.
-  This sandbox has no egress to Supabase and no service key, same as every
-  earlier exemplar-corpus session; the workflow is how this actually runs
-  against the live ~1,800 sermons, the same way the nightly jobs do.
+  This sandbox has no direct egress to Supabase and no service key, same
+  as every earlier exemplar-corpus session; the workflow is how this
+  actually runs against the live ~1,800 sermons, the same way the nightly
+  jobs do. (Supabase MCP did reconnect mid-session and was used to apply
+  the schema and hand-verify two rows — see "Validated against" below —
+  but that's not the same as the REST path the real run takes.)
 
 ## Corpus, as read
 
@@ -42,11 +45,9 @@ judged, and it stays a human judgment even then.
 
 ## Applying the schema
 
-Not yet applied to `eibrykdamgyoylnqknao` — this session's Supabase MCP
-connection was down for the whole build. Apply
-`supabase/sermon_reading_pass_schema.sql` by hand (SQL editor, or
-`apply_migration` once MCP is reachable again) before the first
-`workflow_dispatch` run. The workflow does not create the table itself.
+Applied to `eibrykdamgyoylnqknao` 2026-09-15, once Supabase MCP reconnected
+mid-session. `punctuation_quality` was added in a second migration after
+live testing found the gap described below — see that section.
 
 ## What's genuinely mechanical vs. what's a flagged candidate
 
@@ -115,18 +116,62 @@ the candidate is correct:
   many scripture refs/questions/devices/leak candidates fell in each tenth
   of the sermon stays inside "observable."
 
+## `punctuation_quality` — a real bug the live test caught
+
+Some sources — mostly auto-caption scrapes — carry **no terminal
+punctuation at all**: not "light," zero. Pulling five real rows (three
+`exemplar_sermons`, two `sermons`) once Supabase MCP reconnected, three of
+the five had 0–0.1 periods/question marks per 1,000 characters in a
+19,000–21,000 character body, against 20+ per 1,000 for a normally
+punctuated one. `split_sentences` originally found exactly **one
+"sentence" covering the entire body** for those — every offset, decile,
+and device field on that row quietly collapsed to `pct: 0.0`.
+
+Fixed with a density check: below 2 terminal marks per 1,000 characters,
+the splitter falls back to fixed 22-word pseudo-sentences instead of real
+sentence boundaries, and the row is stamped `punctuation_quality:
+'sparse_punctuation'` (vs `'normal'`) so Stage 2 knows every verbatim/
+offset on that row is a window approximation, not a spoken sentence. This
+was live-verified, not just unit-tested: before the fix, a Dharius
+Daniels row's devices all landed in decile 0; after, they spread
+realistically across all ten deciles (12, 17, 9, 6, 13, 6, 8, 6, 12, 1).
+
+One side effect worth knowing: on a `sparse_punctuation` row,
+`target_questions` will usually be empty even though the sermon is full of
+rhetorical questions — there's no `?` in the source to find. That's an
+accurate absence (nothing to mechanically detect), not a bug.
+
 ## Validated against
 
-No DB egress from this sandbox, so nothing ran against the live corpus.
-The full pipeline (`build_record` → `write_sql`) was run offline against
-two complete Furtick sermons pulled from this session's own scratch files
-(44,987 and 54,336 characters) and against short synthetic text, to check
-that offsets, deciles, and every field shape actually hold up against real
-spoken-transcript punctuation — not just against clean prose. Output looked
-sane: scripture refs matched correctly (`Acts 1:4`, `Genesis 12:1-4`,
-`John 11`), ending flags picked up real direct address and benedictions,
-and the two known-noisy fields above (`tension`, `echo`) were noisy in
-exactly the way described.
+Live-tested against `eibrykdamgyoylnqknao`, not just offline. Two rows
+were pulled, extracted, and written through to `sermon_reading_pass` by
+hand (this sandbox still has no direct Supabase egress, so this went
+through Supabase MCP rather than the REST path the real run uses):
+
+- Tolan Morgan, "Moving On From Your Mistakes" (19,468 chars,
+  `sparse_punctuation`, 8 scripture refs, 59 devices)
+- PD, "STAINED..." (15,622 chars, `normal`, 21 scripture refs — every
+  citation in the sermon's own outline correctly matched, including the
+  repeated ones in the header block)
+
+Both landed clean; a follow-up query confirmed zero orphaned rows (every
+`source_id` traces to a live row in the corpus it claims). A third row
+(Dharius Daniels, ~20K chars) failed to insert this way — not a data
+problem, a **measured ceiling on how much SQL text a single hand-run
+`execute_sql` call can carry: somewhere around 37,500 characters**, past
+which the statement truncates mid-value and Postgres rejects the whole
+thing atomically (nothing corrupt lands). This matches a limit found in
+an earlier exemplar-corpus session. It does not apply to the real run:
+`write_rows` posts one row at a time as an actual HTTP request from
+Python, not text retyped through a tool call, so the workflow is not
+subject to it.
+
+Before the punctuation fix, the pipeline was also run offline against two
+complete Furtick sermons pulled from this session's own scratch files
+(44,987 and 54,336 characters) and short synthetic text, to check field
+shapes against real spoken-transcript punctuation. Both of those happened
+to be normally punctuated, which is exactly why the sparse-punctuation gap
+wasn't caught until real `exemplar_sermons`/`sermons` rows were pulled.
 
 ## What Stage 1 does not do
 

@@ -149,11 +149,14 @@ def report(records, skipped_empty):
     for src, rs in by_source.items():
         n_claim_marker = sum(1 for r in rs if r["governing_claim"].get("confidence") == "marker")
         n_tension_found = sum(1 for r in rs if r["tension"].get("confidence") == "marker")
+        n_sparse = sum(1 for r in rs if r.get("punctuation_quality") == "sparse_punctuation")
         avg_scripture = sum(len(r["scripture_refs"]) for r in rs) / len(rs)
         avg_devices = sum(len(r["devices"]) for r in rs) / len(rs)
         print(f"  {src}: {len(rs)} sermons. governing claim found by marker in "
               f"{n_claim_marker}/{len(rs)}; tension marker found in {n_tension_found}/{len(rs)}; "
-              f"avg {avg_scripture:.1f} scripture refs, avg {avg_devices:.1f} devices/sermon.")
+              f"avg {avg_scripture:.1f} scripture refs, avg {avg_devices:.1f} devices/sermon; "
+              f"{n_sparse}/{len(rs)} had no real punctuation to split sentences on "
+              f"(pseudo-sentence fallback used — see docs).")
 
 
 def sql_literal(value):
@@ -172,7 +175,7 @@ def write_sql(records, path):
     cols = ["source", "source_id", "preacher", "source_type", "sermon_date", "title",
             "char_len", "governing_claim", "tension", "target_questions", "relief_points",
             "scripture_refs", "devices", "repeated_lines", "ending", "leak_candidates",
-            "orality_markers", "structural_map", "extractor_version"]
+            "orality_markers", "structural_map", "punctuation_quality", "extractor_version"]
     with open(path, "w", encoding="utf-8") as f:
         f.write(f"-- {len(records)} rows for sermon_reading_pass. Idempotent: re-running\n")
         f.write("-- the extractor and re-applying just updates these rows in place.\n")

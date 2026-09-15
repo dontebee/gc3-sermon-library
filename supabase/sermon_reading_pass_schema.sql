@@ -11,10 +11,9 @@
 -- from. There is no real foreign key, because it points at one of two
 -- tables depending on `source` — enforced in the extractor, not in SQL.
 --
--- Written 2026-09-15. Not yet applied to eibrykdamgyoylnqknao — this
--- session had no egress to Supabase. Apply by hand or via the
--- workflow_dispatch job (sermon_reading_pass.yml), which has both the
--- egress and the service key this sandbox lacks.
+-- Applied to eibrykdamgyoylnqknao 2026-09-15, via Supabase MCP once it
+-- reconnected (this sandbox still has no direct HTTP egress to Supabase —
+-- see sermon_reading_pass.py's docstring for how the real run gets it).
 
 create table if not exists sermon_reading_pass (
   id                  bigint generated always as identity primary key,
@@ -91,6 +90,16 @@ create table if not exists sermon_reading_pass (
   -- [{decile, scripture_refs, questions, repeated_line_hits, devices,
   --   leak_candidates}, ...]
 
+  -- Some sources have essentially no terminal punctuation at all (0-0.1
+  -- marks per 1,000 characters vs 20+ for a normally punctuated transcript,
+  -- measured against real exemplar_sermons rows during testing). Without
+  -- this flag, the sentence splitter finds one "sentence" covering the
+  -- entire body and every offset/decile/device field quietly degrades.
+  -- 'sparse_punctuation' means a fixed-word-window fallback ran instead —
+  -- every verbatim/offset field on that row is an approximation, not a real
+  -- sentence boundary. Discount accordingly in Stage 2.
+  punctuation_quality   text not null default 'normal',
+
   extractor_version     text not null,
   extracted_at          timestamptz not null default now(),
 
@@ -110,6 +119,8 @@ comment on column sermon_reading_pass.governing_claim is
 
 comment on column sermon_reading_pass.relief_points is
   'Candidate points where tension resolves and what it was resolved BY. Whether that source actually counts (per the hard rule: relief must come from the word) is a Stage 2 judgment, not made here.';
+
+alter table sermon_reading_pass enable row level security;
 
 -- Verification: every row must trace to a real sermon in exactly one corpus,
 -- and no source_id should ever collide across the two.

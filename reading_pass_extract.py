@@ -33,9 +33,40 @@ EXTRACTOR_VERSION = "reading-pass-1.0.0"
 # whitespace and a capital (or end of string) is sentence enough.
 _SENT_SPLIT = re.compile(r'(?<=[.!?])\s+(?=[A-Z"‘“]|$)')
 
+# Some sources (raw auto-captions, mostly) carry no terminal punctuation at
+# all — not "light," none. Tested on real exemplar rows: sermons with actual
+# sentences run 20+ terminal marks per 1,000 characters; the unpunctuated
+# ones ran 0–0.1. Below 2 per 1,000 chars, `_SENT_SPLIT` finds one "sentence"
+# covering the entire body, and every offset/decile/device field downstream
+# quietly degrades to meaningless. That was caught by testing against five
+# real rows, not assumed — three of five in that sample had zero terminal
+# punctuation in a 19,000–21,000 character body.
+_LOW_PUNCTUATION_THRESHOLD = 2.0  # terminal marks per 1,000 characters
+_WORDS_PER_PSEUDO_SENTENCE = 22   # roughly a breath length, no better basis
+
 
 def split_sentences(body):
-    """[(offset, text), ...] for each sentence, offsets into `body`."""
+    """[(offset, text), ...] for each sentence, offsets into `body`.
+
+    Falls back to fixed-length word windows when the body has essentially no
+    terminal punctuation to split on — see the note above. Callers that need
+    to know which mode ran should call split_sentences_with_quality instead;
+    this wrapper exists for the (rare) caller that only wants the sentences.
+    """
+    sentences, _ = split_sentences_with_quality(body)
+    return sentences
+
+
+def split_sentences_with_quality(body):
+    """(sentences, quality) where quality is 'normal' or 'sparse_punctuation'."""
+    terminals = body.count(".") + body.count("?") + body.count("!")
+    density = 1000.0 * terminals / max(1, len(body))
+    if density >= _LOW_PUNCTUATION_THRESHOLD:
+        return _split_on_punctuation(body), "normal"
+    return _split_on_word_windows(body), "sparse_punctuation"
+
+
+def _split_on_punctuation(body):
     sentences = []
     pos = 0
     for piece in _SENT_SPLIT.split(body):
@@ -49,6 +80,23 @@ def split_sentences(body):
         sentences.append((idx, piece))
         pos = idx + len(piece)
     return sentences
+
+
+def _split_on_word_windows(body, n=_WORDS_PER_PSEUDO_SENTENCE):
+    """Pseudo-sentences of n words each, by offset. Not real sentence
+    boundaries — a stand-in so offsets/deciles/devices still spread across
+    the sermon instead of collapsing onto a single giant "sentence." Verbatim
+    text for these is a window, not a spoken sentence; treat it as such."""
+    words = list(re.finditer(r"\S+", body))
+    if not words:
+        return []
+    chunks = []
+    for i in range(0, len(words), n):
+        group = words[i:i + n]
+        start = group[0].start()
+        end = group[-1].end()
+        chunks.append((start, body[start:end]))
+    return chunks
 
 
 def pct(offset, char_len):
@@ -543,7 +591,7 @@ def extract(body):
     matching the jsonb columns of sermon_reading_pass (minus the id/preacher/
     date columns the caller already has)."""
     char_len = len(body)
-    sentences = split_sentences(body)
+    sentences, punctuation_quality = split_sentences_with_quality(body)
 
     scripture_refs = find_scripture_refs(body, sentences, char_len)
     governing_claim = find_governing_claim(sentences, body, char_len)
@@ -582,5 +630,6 @@ def extract(body):
         "leak_candidates": leak_candidates,
         "orality_markers": orality_markers,
         "structural_map": structural_map,
+        "punctuation_quality": punctuation_quality,
         "extractor_version": EXTRACTOR_VERSION,
     }
