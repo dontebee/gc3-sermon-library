@@ -302,49 +302,57 @@ def density(body):
 
 
 def fetch_sparse(source, limit=None, redo=False, sample_seed=None):
-    """Unpunctuated sermons that have no verified restoration yet."""
+    """Unpunctuated sermons with no restoration yet — ids and titles, no bodies.
+
+    Reads the `sermon_sparse_candidates` view, which decides the punctuation
+    question in the database. The previous version pulled every body across
+    the wire to measure density in Python: ~32MB of transcript to answer one
+    boolean per row. It killed the job outright with a PostgREST 500 /
+    57014 statement timeout, before a single sermon had been restored.
+
+    Bodies are fetched later, one per sermon, by the worker that needs one.
+    """
     import requests
 
-    base = gc3_env.supabase_url() + "/rest/v1/"
-    headers = _rest_headers()
-    table, id_cols = (("exemplar_sermons", "id,preacher,title,body")
-                      if source == "exemplar" else
-                      ("sermons", "id,speaker,title,body"))
-    params = {"select": id_cols, "order": "id.asc"}
-    if source == "exemplar":
-        params["calibration_eligible"] = "eq.true"
-
-    rows, offset, page = [], 0, 1000
-    while True:
-        r = requests.get(base + table,
-                         headers={**headers, "Range-Unit": "items",
-                                  "Range": f"{offset}-{offset + page - 1}"},
-                         params=params, timeout=120)
-        if r.status_code >= 300:
-            raise SystemExit(f"ERROR: could not read {table} ({r.status_code}): {r.text[:300]}")
-        chunk = r.json()
-        rows.extend(chunk)
-        if len(chunk) < page:
-            break
-        offset += page
-
-    sparse = [r for r in rows
-              if (r.get("body") or "").strip() and density(r["body"]) < SPARSE_THRESHOLD]
+    r = requests.get(gc3_env.supabase_url() + "/rest/v1/sermon_sparse_candidates",
+                     headers=_rest_headers(),
+                     params={"select": "id,who,title,char_len",
+                             "source": f"eq.{source}", "order": "id.asc"},
+                     timeout=120)
+    if r.status_code >= 300:
+        raise SystemExit(f"ERROR: could not read sermon_sparse_candidates "
+                         f"({r.status_code}): {r.text[:300]}")
+    sparse = r.json()
 
     if not redo:
         done = fetch_already_restored(source)
-        sparse = [r for r in sparse if r["id"] not in done]
+        sparse = [row for row in sparse if row["id"] not in done]
 
     if limit and sample_seed is not None and len(sparse) > limit:
         # Take a spread, not a prefix. Rows come back in id order, and id
         # order is load order, so the first N sparse exemplar rows are all
         # one preacher — Furtick, who is 84% punctuated and therefore the
         # least representative of the 509 that need this. Jakes and Daniels
-        # are 460 of them and sit further down. A prefix sample would measure
-        # the wrong transcription source entirely.
+        # are 460 of them and sit further down.
         return random.Random(sample_seed).sample(sparse, limit)
 
     return sparse[:limit] if limit else sparse
+
+
+def fetch_body(source, sermon_id):
+    """One sermon's body, fetched when a worker is ready to use it."""
+    import requests
+
+    table = "exemplar_sermons" if source == "exemplar" else "sermons"
+    r = requests.get(gc3_env.supabase_url() + f"/rest/v1/{table}",
+                     headers=_rest_headers(),
+                     params={"select": "body", "id": f"eq.{sermon_id}"},
+                     timeout=120)
+    if r.status_code >= 300:
+        print(f"  !! could not read {table} {sermon_id} ({r.status_code})", flush=True)
+        return None
+    rows = r.json()
+    return rows[0]["body"] if rows else None
 
 
 def fetch_already_restored(source):
@@ -419,11 +427,10 @@ def survey(sources):
     for src in sources:
         rows = fetch_sparse(src, redo=True)
         done = fetch_already_restored(src)
-        chars = sum(len(r["body"]) for r in rows)
-        total_chars += sum(len(r["body"]) for r in rows if r["id"] not in done)
+        todo = [r for r in rows if r["id"] not in done]
+        total_chars += sum(r["char_len"] for r in todo)
         print(f"{src}: {len(rows)} unpunctuated sermons, {len(done)} already restored, "
-              f"{len(rows) - len([r for r in rows if r['id'] in done])} to do. "
-              f"{chars:,} characters total.")
+              f"{len(todo)} to do. {sum(r['char_len'] for r in rows):,} characters total.")
     print(f"\nRemaining work: {total_chars:,} characters.")
     print("Rough cost to restore, by model (thinking not included):")
     for model in PRICING:
@@ -467,7 +474,7 @@ def main():
         print("Nothing to restore.")
         return
 
-    chars = sum(len(r["body"]) for _, r in work)
+    chars = sum(r["char_len"] for _, r in work)
     print(f"{len(work)} sermons, {chars:,} characters. "
           f"Model {args.model}. Rough cost ${estimate_cost(chars, args.model):,.2f}.\n")
 
@@ -475,8 +482,11 @@ def main():
 
     def one(item):
         src, row = item
-        who = row.get("preacher") or row.get("speaker") or "?"
-        restored, total, ok, api_bad = restore_body(client, args.model, row["body"])
+        who = row.get("who") or "?"
+        body = fetch_body(src, row["id"])
+        if not body:
+            return None
+        restored, total, ok, api_bad = restore_body(client, args.model, body)
         flag = "ok " if ok == total else "PARTIAL"
         print(f"  [{flag}] {src} {row['id']:5} {who[:18]:18} "
               f"{row['title'][:40]:40} {ok}/{total} chunks", flush=True)
@@ -487,7 +497,7 @@ def main():
             "verified": ok == total,
             "chunks_total": total, "chunks_verified": ok,
             "restored_by": args.model, "restorer_version": RESTORER_VERSION,
-            "char_len_source": len(row["body"]),
+            "char_len_source": len(body),
             "char_len_restored": len(restored),
         }
 
@@ -509,6 +519,8 @@ def main():
 
     with ThreadPoolExecutor(max_workers=args.workers) as pool:
         for rec in pool.map(one, work):
+            if rec is None:          # body could not be read; already logged
+                continue
             (records if rec["verified"] else failures).append(rec)
             pending.append(rec)
             flush()
@@ -539,7 +551,7 @@ def main():
     # model can do well on one and badly on another.
     by_who = {}
     for src, row in work:
-        who = row.get("preacher") or row.get("speaker") or "?"
+        who = row.get("who") or "?"
         rec = next((r for r in all_recs
                     if r["source"] == src and r["source_id"] == row["id"]), None)
         if rec:
