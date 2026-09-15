@@ -65,17 +65,48 @@ normalize(text) = lowercase
 ```
 
 If `normalize(source) != normalize(restored)`, the chunk is rejected and
-retried once; if it fails twice the **original** chunk is kept. So a stored
-row can differ from its source in punctuation, capitalization and whitespace,
-and in nothing else. Not a spelling. Not a contraction. Not a repeated phrase.
+retried with the offending span quoted back; after three attempts the
+**original** chunk is kept. So a stored row can differ from its source in
+punctuation, capitalization and whitespace, and in nothing else. Not a
+spelling. Not a contraction. Not a repeated phrase.
 
 Apostrophes are deleted rather than compared because inserting them is
 harmless and models do it reflexively: `dont` and `don't` normalize alike.
 
-`verified` is true only when every chunk of that sermon passed. The reading
-pass reads `WHERE verified` and ignores the rest.
+### What `verified` means (and does not)
 
-The verifier is tested against the cases that would actually hurt, and
+`verified` is true when **every** chunk of that sermon got punctuated. It is
+**not** a trust gate. Word safety is unconditional: a chunk that came back
+altered is discarded in favour of its original text *before anything is
+stored*, so every row holds exactly the source's words whatever the flag says.
+A `verified = false` row is simply punctuated in fewer places.
+
+The reading pass therefore reads **all** restored rows, not just verified
+ones. Filtering on `verified` was the original design and it was wrong: on the
+first real run 13 of 17 chunks came back clean, but the four failures were
+spread across all three sermons, so a verified-only filter would have thrown
+away every sermon and read the raw bodies instead. Five-sixths punctuated
+beats not punctuated.
+
+### What the model actually tries to do
+
+From the first run against real transcripts — every rejection was an attempted
+improvement:
+
+| source (what was said) | the model's "fix" |
+|---|---|
+| `what what stood out` | `what stood out` |
+| `theyre in ducting` | `theyre inducting` |
+| `and i kept spelling it ar e h` | `...it r e h` |
+| `let you which is a` | `let you like some of` |
+
+The first is Furtick stuttering. The third is him spelling a word out loud.
+Both are the preaching, and both would have been quietly tidied away. Four of
+six failures repeated the identical edit on a second attempt, which is why the
+retry now quotes the exact span back rather than saying "you changed
+something".
+
+The verifier is also tested against synthetic cases that would hurt, and
 rejects all of them:
 
 | case | verdict |
@@ -88,7 +119,8 @@ rejects all of them:
 | `"yall dont know"` → `"Y'all don't know."` | accepted |
 
 The first two matter most for preaching. A preacher's repetition is usually
-deliberate, and a model's instinct is to tidy it away. This catches that.
+deliberate, and a model's instinct is to tidy it away. This catches that, and
+the live run above confirmed it catches it on real text too.
 
 ## Cost
 
@@ -121,6 +153,13 @@ workflow offers all three in a dropdown.
 
 Run `--survey` first. It counts the remaining work and prices it at every
 tier without calling the model once.
+
+Measured on the first run: 3 exemplar sermons, 95,412 characters, 17 chunks,
+about 2m40s wall clock at 4 workers, and the script's own estimate for that
+slice was $0.85. Scaling that to 32.4M characters puts the full run at roughly
+15 hours of wall clock at 4 workers — raise `--workers` for the real thing,
+and note the workflow's 350-minute timeout will not fit it in one go. It
+resumes, so several runs is fine.
 
 ## Running it
 
