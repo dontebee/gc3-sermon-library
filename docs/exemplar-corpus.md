@@ -88,6 +88,13 @@ needs a network route to the project URL. A GitHub Actions run has one; a
 sandbox may not. `--sql-out FILE` is the fallback: it emits the inserts as SQL
 to run wherever a connection exists.
 
+**Writing through a database tool caps out at about 37,500 characters per
+statement.** An agent loading rows that way has to retype each insert, and its
+output is capped; past that the statement is cut off mid-text. Postgres
+rejects the fragment, so nothing corrupt is stored, but nothing lands either.
+Measured against this corpus, that ceiling passes 10 of 124 Furtick sermons.
+Load these files from a machine that can reach the database instead.
+
 ## What this ingest deliberately does not do
 
 No `sermon_extractions`, no `construct_instances`, no `brain_items`, no 10T

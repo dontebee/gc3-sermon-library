@@ -13,16 +13,26 @@ Two limits stop the remote session finishing the job:
    `dharius_daniels_sermons.csv` (8.4 MB) timed out on ten attempts. Neither
    file ever reached the session, so neither could be parsed or loaded.
 2. **The sandbox has no network route to Supabase.** `--apply` needs one.
+3. **A single tool call cannot carry a whole sermon.** Writing through the
+   database tool means the model retypes the insert, and output is capped.
+   Measured on this corpus: statements up to ~37,500 characters go through,
+   anything larger is silently cut off mid-statement. Postgres rejects the
+   fragment, so nothing corrupt is written, but nothing lands either. The
+   median Furtick sermon is 42,500 characters, so most of the corpus cannot
+   be loaded this way at any batch size. This is not worth retrying.
 
-Locally you have both. The whole job is three commands.
+Locally you have all three. The whole job is three commands.
 
 ## State right now
 
 - `exemplar_sermons` exists in `eibrykdamgyoylnqknao`, already migrated.
   Schema and reasoning: `supabase/exemplar_schema.sql`.
-- Steven Furtick is **partially loaded** from `elevation_church_sermons.csv`
-  (124 usable of 338 rows). The remote session was pushing them in one at a
-  time and did not finish.
+- Steven Furtick is **partially loaded** from `elevation_church_sermons.csv`:
+  **10 of 124** usable rows (338 rows read). Those 10 are the shortest
+  sermons, 26,727 to 37,487 characters, and each has been checked against the
+  CSV and is byte-for-byte whole. The other 114 run 37,980 to 62,135
+  characters, every one above the ceiling described above, which is why they
+  did not land.
 - Dharius Daniels: nothing loaded.
 - T.D. Jakes: nothing loaded.
 
