@@ -32,13 +32,26 @@ They are never inferred from the transcript, and the survey below is why.
 `GC3-Sermon-Transcripts - Exemplar`, surveyed 2026-09-15. Thirteen CSVs.
 Three of them hold usable outside preaching. The filenames are not reliable.
 
-**Usable exemplars**
+**Usable exemplars.** Loaded 2026-09-15; 629 rows in `exemplar_sermons`.
 
-| file | rows | usable | preacher |
+| file | loaded | preachers | principal |
 |---|---|---|---|
-| `elevation_church_sermons.csv` | 338 | 124 | Steven Furtick, Elevation Church |
-| `dharius_daniels_sermons.csv` | — | — | Dharius Daniels, Change Church |
-| `bishop_td_jakes_sermons.csv` | — | — | T.D. Jakes, The Potter's House |
+| `bishop_td_jakes_sermons.csv` | 283 | 15 | T.D. Jakes (242) |
+| `dharius_daniels_sermons.csv` | 222 | 5 | Dharius Daniels (218) |
+| `elevation_church_sermons.csv` | 124 | 1 | Steven Furtick (124) |
+
+Only the Elevation file turned out to hold a single preacher. The other two
+are channel dumps: the Jakes file alone carries fifteen, among them Sarah
+Jakes Roberts, Cora Jakes and a dozen guest preachers. A single per-file
+`--preacher` label would have filed all of them under one name, which is the
+whole reason the operator sets it per row when a survey shows a file is
+mixed.
+
+Twenty-seven rows are filed `Multiple speakers` or `Unattributed`, all in the
+Jakes file and averaging about 60,000 characters. Those are services and
+panels rather than one sermon, so they are the wrong shape for a rubric
+ceiling even though they are correctly stored. Decide whether the grader
+should see them before pointing it at the corpus.
 
 **PD's own preaching. Never goes in this table.**
 
