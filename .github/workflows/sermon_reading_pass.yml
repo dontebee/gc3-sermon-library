@@ -1,0 +1,59 @@
+name: GC3 Exemplar Reading Pass — Stage 1 extraction
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        # Defaults ON, per house rule (see CLAUDE.md): a hand-triggered run
+        # is almost always someone checking the job works. Untick it
+        # deliberately to write to sermon_reading_pass for real.
+        description: 'Dry run (extract and report, write nothing). Untick to write.'
+        type: boolean
+        default: true
+      source:
+        description: 'Which corpus to run'
+        type: choice
+        options: ['both', 'exemplar', 'pd']
+        default: 'both'
+      limit:
+        description: 'Cap rows per corpus (blank = no cap). Use this to try the job on a handful of sermons before running all ~1,800.'
+        type: string
+        default: ''
+
+# This job only ever reads sermons/exemplar_sermons and writes to
+# sermon_reading_pass — a table nothing else in this repo touches. It sends
+# no mail, so the house rule about member email in CLAUDE.md does not apply
+# here; dry_run exists because the write is still one this job should not
+# make by accident on a manual trigger.
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run the reading pass
+        env:
+          # Four spellings, two values, one Supabase project. gc3_env.py
+          # picks whichever is set, preferring the intranet's names, so
+          # Doppler only has to hold one of each.
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: |
+          ARGS="--source ${{ inputs.source }}"
+          if [ -n "${{ inputs.limit }}" ]; then
+            ARGS="$ARGS --limit ${{ inputs.limit }}"
+          fi
+          if [ "${{ inputs.dry_run }}" != "true" ]; then
+            ARGS="$ARGS --apply"
+          fi
+          echo "python sermon_reading_pass.py $ARGS"
+          python sermon_reading_pass.py $ARGS
