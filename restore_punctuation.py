@@ -48,6 +48,7 @@ It also never writes to `sermons` or `exemplar_sermons`. Output goes to
 import argparse
 import json
 import os
+import random
 import re
 import sys
 import time
@@ -252,7 +253,7 @@ def density(body):
     return 1000.0 * sum(body.count(c) for c in ".?!") / len(body)
 
 
-def fetch_sparse(source, limit=None, redo=False):
+def fetch_sparse(source, limit=None, redo=False, sample_seed=None):
     """Unpunctuated sermons that have no verified restoration yet."""
     import requests
 
@@ -285,6 +286,15 @@ def fetch_sparse(source, limit=None, redo=False):
     if not redo:
         done = fetch_already_restored(source)
         sparse = [r for r in sparse if r["id"] not in done]
+
+    if limit and sample_seed is not None and len(sparse) > limit:
+        # Take a spread, not a prefix. Rows come back in id order, and id
+        # order is load order, so the first N sparse exemplar rows are all
+        # one preacher — Furtick, who is 84% punctuated and therefore the
+        # least representative of the 509 that need this. Jakes and Daniels
+        # are 460 of them and sit further down. A prefix sample would measure
+        # the wrong transcription source entirely.
+        return random.Random(sample_seed).sample(sparse, limit)
 
     return sparse[:limit] if limit else sparse
 
@@ -373,6 +383,10 @@ def main():
     ap.add_argument("--workers", type=int, default=4, help="sermons in flight at once")
     ap.add_argument("--survey", action="store_true", help="count and price the work, do nothing")
     ap.add_argument("--redo", action="store_true", help="include sermons already restored")
+    ap.add_argument("--sample-seed", type=int, default=None,
+                    help="with --limit, take a seeded random spread across the corpus "
+                         "instead of the first N by id. Use for a representative trial: "
+                         "id order is load order, so a prefix is all one preacher.")
     ap.add_argument("--apply", action="store_true", help="write (default is a dry run)")
     args = ap.parse_args()
 
@@ -390,7 +404,7 @@ def main():
 
     work = []
     for src in sources:
-        for row in fetch_sparse(src, args.limit, args.redo):
+        for row in fetch_sparse(src, args.limit, args.redo, args.sample_seed):
             work.append((src, row))
     if not work:
         print("Nothing to restore.")
@@ -423,7 +437,29 @@ def main():
         for rec in pool.map(one, work):
             (records if rec["verified"] else failures).append(rec)
 
+    all_recs = records + failures
+    chunks_total = sum(r["chunks_total"] for r in all_recs)
+    chunks_ok = sum(r["chunks_verified"] for r in all_recs)
     print(f"\n{len(records)} fully verified, {len(failures)} partial.")
+    print(f"Chunks: {chunks_ok}/{chunks_total} verified "
+          f"({100.0 * chunks_ok / max(chunks_total, 1):.1f}%). "
+          f"Every rejected chunk kept its original text.")
+
+    # Per-preacher, because the corpus is not one transcription source and a
+    # model can do well on one and badly on another.
+    by_who = {}
+    for src, row in work:
+        who = row.get("preacher") or row.get("speaker") or "?"
+        rec = next((r for r in all_recs
+                    if r["source"] == src and r["source_id"] == row["id"]), None)
+        if rec:
+            t, o = by_who.setdefault(who, [0, 0])
+            by_who[who] = [t + rec["chunks_total"], o + rec["chunks_verified"]]
+    if len(by_who) > 1:
+        print("\nBy preacher:")
+        for who, (t, o) in sorted(by_who.items(), key=lambda kv: -kv[1][0]):
+            print(f"  {who[:24]:24} {o:4}/{t:4} chunks "
+                  f"({100.0 * o / max(t, 1):5.1f}%)")
     if records:
         sample = records[0]
         print(f"\nSample ({sample['source']} {sample['source_id']}), first 400 chars:")
