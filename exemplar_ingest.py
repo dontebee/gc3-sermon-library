@@ -35,7 +35,25 @@ from collections import Counter
 
 import gc3_env
 
-csv.field_size_limit(sys.maxsize)
+def _raise_csv_field_limit():
+    """Let a single CSV field hold a whole sermon.
+
+    csv.field_size_limit takes a C long. That is 64-bit on Linux and macOS but
+    32-bit on Windows, so passing sys.maxsize raises OverflowError there and
+    the ingest dies on import before it has read anything. Step down until one
+    fits, which lands on the largest limit the platform will take.
+    """
+    limit = sys.maxsize
+    while limit > 1:
+        try:
+            csv.field_size_limit(limit)
+            return limit
+        except OverflowError:
+            limit //= 10
+    return csv.field_size_limit()
+
+
+_raise_csv_field_limit()
 
 MIN_BODY_CHARS = 2000
 
