@@ -24,6 +24,17 @@ whole, and names the row when one is missing or short. Worth the habit: a
 transcript that arrives truncated still looks like a sermon, so length is the
 only thing that catches it.
 
+`--labels FILE` relabels listed titles in a file that holds more than one
+preacher: a CSV of `title,preacher,ministry,notes`, exact titles. Anything not
+listed takes `--preacher`. A labelled title that is not in the file stops the
+run, because the row it meant to move would otherwise land under the wrong
+name.
+
+Re-running a load is safe. `--apply` reads which sermons are already in the
+table and inserts only the rest. (It has to: the dedupe index is on an
+expression, which PostgREST's `ignore-duplicates` cannot target, so one
+existing row used to fail its whole batch.)
+
 `--preacher` and `--ministry` are set by the operator on the command line.
 They are never inferred from the transcript, and the survey below is why.
 
@@ -46,6 +57,21 @@ Jakes Roberts, Cora Jakes and a dozen guest preachers. A single per-file
 `--preacher` label would have filed all of them under one name, which is the
 whole reason the operator sets it per row when a survey shows a file is
 mixed.
+
+Every row was checked byte for byte against its CSV. The labels live in
+`exemplar_labels/<file>.csv`:
+
+- Guests go under their own name. `ministry` is where the sermon was preached
+  or published, not their home church, because that is what the file shows.
+- More than one voice goes under `Multiple speakers`, with the names in
+  `notes`. Such a transcript is nobody's cadence, and filing the Furtick
+  conversation under either man would skew both.
+- `Rightfully Mine!` names no preacher, and the transcript never says who
+  it is. It sits under `Unattributed`, with the evidence in `notes`.
+
+The title skip rule also drops some real sermons with "Worship" in the name
+(`Worship in the Wilderness: Part 2`, two Daniels Easter services). They are
+left out, per the spec.
 
 ## What the grader should read
 
