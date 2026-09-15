@@ -358,6 +358,38 @@ def write_sql(records, path, batch_size=5):
     print(f"Wrote {len(records)} rows of SQL to {path}")
 
 
+def write_verify_sql(records, path):
+    """Emit a query that checks what landed against what was read.
+
+    Any transport can truncate. A body that arrives short is the failure that
+    would otherwise go unnoticed, because a short sermon still looks like a
+    sermon. This compares every row's length against the source CSV and
+    returns only the rows that disagree, so a clean run prints nothing.
+    """
+    pairs = ",\n    ".join(
+        f"({sql_literal(r['source_video_id'] or r['title'])}, {len(r['body'])})"
+        for r in records
+    )
+    query = f"""with expected (key, chars) as (values
+    {pairs}
+)
+select e.key,
+       e.chars as expected_chars,
+       length(x.body) as actual_chars,
+       case when x.id is null then 'missing' else 'truncated or altered' end as problem
+from expected e
+left join exemplar_sermons x
+  on coalesce(x.source_video_id, x.title) = e.key
+ and x.preacher = {sql_literal(records[0]['preacher']) if records else "''"}
+where x.id is null or length(x.body) <> e.chars
+order by e.key;
+"""
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write(query)
+    print(f"Wrote a verification query for {len(records)} rows to {path}")
+    print("It returns zero rows when every sermon landed whole.")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--file", required=True, help="path to the CSV")
@@ -367,6 +399,8 @@ def main():
     ap.add_argument("--survey", action="store_true", help="report what the file holds, write nothing")
     ap.add_argument("--apply", action="store_true", help="write to Supabase (default is a dry run)")
     ap.add_argument("--sql-out", default=None, help="emit SQL instead of inserting")
+    ap.add_argument("--verify-out", default=None,
+                    help="emit a query that checks what landed against this CSV")
     args = ap.parse_args()
 
     if args.survey:
@@ -382,6 +416,9 @@ def main():
     )
     report(source_file, args.preacher, total, kept, skipped, dupes)
 
+    if args.verify_out:
+        write_verify_sql(kept, args.verify_out)
+        return
     if args.sql_out:
         write_sql(kept, args.sql_out)
         return

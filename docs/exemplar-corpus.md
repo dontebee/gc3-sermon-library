@@ -18,6 +18,12 @@ the report. Nothing is written.
 Add `--apply` to write. `--survey` prints what a file holds without needing a
 preacher, which is the thing to run first on a file nobody has looked at.
 
+`--verify-out FILE` writes a query that checks what landed against the CSV it
+came from. Run it after any load. It returns nothing when every sermon is
+whole, and names the row when one is missing or short. Worth the habit: a
+transcript that arrives truncated still looks like a sermon, so length is the
+only thing that catches it.
+
 `--preacher` and `--ministry` are set by the operator on the command line.
 They are never inferred from the transcript, and the survey below is why.
 
