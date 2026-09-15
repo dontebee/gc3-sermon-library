@@ -205,18 +205,46 @@ def read_rows(path):
             yield row, cols
 
 
-def build_records(path, preacher, ministry, source_file):
+def load_labels(path):
+    """Per-title overrides for a file that holds more than one preacher.
+
+    A CSV of title, preacher, ministry, notes, written by the operator after
+    reading --survey. Titles match exactly. Rows not listed take the
+    --preacher and --ministry from the command line. Still never inferred.
+    """
+    labels = {}
+    with open(path, newline="", encoding="utf-8") as fh:
+        for row in csv.DictReader(fh):
+            title = (row.get("title") or "").strip()
+            if not title or not (row.get("preacher") or "").strip():
+                raise SystemExit(f"ERROR: {path} has a row without a title or preacher: {row}")
+            labels[title] = {
+                "preacher": row["preacher"].strip(),
+                "ministry": (row.get("ministry") or "").strip() or None,
+                "notes": (row.get("notes") or "").strip() or None,
+            }
+    return labels
+
+
+def build_records(path, preacher, ministry, source_file, labels=None):
+    labels = labels or {}
     kept, skipped, seen = [], [], set()
     dupes_in_file = 0
     total = 0
+    titles_seen = set()
     for row, cols in read_rows(path):
         total += 1
         title = (row.get(cols["title"]) or "").strip()
+        titles_seen.add(title)
         body = clean_body(row.get(cols["transcript"]))
         reason = skip_reason(title, body)
         if reason:
             skipped.append((title or "(untitled)", reason))
             continue
+        label = labels.get(title)
+        row_preacher = label["preacher"] if label else preacher
+        row_ministry = label["ministry"] if label else ministry
+        row_notes = label["notes"] if label else None
         url = (row.get(cols["url"]) or "").strip() if "url" in cols else ""
         vid = None
         if "video_id" in cols:
@@ -225,15 +253,15 @@ def build_records(path, preacher, ministry, source_file):
         published_ts, published_date = parse_published(
             row.get(cols["published"]) if "published" in cols else None
         )
-        key = (preacher, vid or title)
+        key = (row_preacher, vid or title)
         if key in seen:
             dupes_in_file += 1
             continue
         seen.add(key)
         kept.append(
             {
-                "preacher": preacher,
-                "ministry": ministry,
+                "preacher": row_preacher,
+                "ministry": row_ministry,
                 "title": title,
                 "preached_date": published_date,
                 "date_published": published_ts,
@@ -243,7 +271,15 @@ def build_records(path, preacher, ministry, source_file):
                 "source_type": "transcript",
                 "source_file": source_file,
                 "body": body,
+                "notes": row_notes,
             }
+        )
+    # A label that matches nothing is a typo, and the row it meant to relabel
+    # would otherwise land quietly under the wrong preacher.
+    unmatched = sorted(set(labels) - titles_seen)
+    if unmatched:
+        raise SystemExit(
+            "ERROR: these labelled titles are not in the file:\n  " + "\n  ".join(unmatched)
         )
     return kept, skipped, dupes_in_file, total
 
@@ -291,6 +327,10 @@ def report(source_file, preacher, total, kept, skipped, dupes):
     print(f"Preacher: {preacher}")
     print(f"Rows read: {total}")
     print(f"Inserted: {len(kept)}")
+    by_preacher = Counter(r["preacher"] for r in kept)
+    if len(by_preacher) > 1:
+        for name, n in by_preacher.most_common():
+            print(f"  {n:5d}  {name}")
     print(f"Skipped: {len(skipped)}")
     for reason, n in Counter(r for _, r in skipped).most_common():
         print(f"  {n:5d}  {reason}")
@@ -316,9 +356,36 @@ def write_rows(records, batch_size=25):
         "apikey": key,
         "Authorization": f"Bearer {key}",
         "Content-Type": "application/json",
-        # The unique index is the dedupe; a repeat run should be a no-op.
-        "Prefer": "resolution=ignore-duplicates,return=minimal",
+        "Prefer": "return=minimal",
     }
+
+    # The dedupe index is on an expression, coalesce(source_video_id, title),
+    # and PostgREST can only name plain columns in on_conflict. So
+    # resolution=ignore-duplicates never reaches it, and one row already in
+    # the table fails its whole batch with a 409. Filter those out first, so a
+    # repeat run fills in what is missing instead of stopping at the first
+    # sermon that already landed.
+    existing = set()
+    for preacher in {r["preacher"] for r in records}:
+        offset = 0
+        while True:
+            resp = requests.get(
+                url,
+                headers={**headers, "Range-Unit": "items", "Range": f"{offset}-{offset + 999}"},
+                params={"select": "source_video_id,title", "preacher": f"eq.{preacher}"},
+                timeout=60,
+            )
+            if resp.status_code >= 300:
+                raise SystemExit(f"ERROR: could not read existing rows ({resp.status_code}): {resp.text[:400]}")
+            page = resp.json()
+            existing.update((preacher, r["source_video_id"] or r["title"]) for r in page)
+            if len(page) < 1000:
+                break
+            offset += 1000
+    already = [r for r in records if (r["preacher"], r["source_video_id"] or r["title"]) in existing]
+    records = [r for r in records if (r["preacher"], r["source_video_id"] or r["title"]) not in existing]
+    print(f"Already in the table: {len(already)}. To insert: {len(records)}.")
+
     written = 0
     for i in range(0, len(records), batch_size):
         batch = records[i : i + batch_size]
@@ -343,7 +410,7 @@ def write_sql(records, path, batch_size=5):
     cols = [
         "preacher", "ministry", "title", "preached_date", "date_published",
         "duration_seconds", "source_url", "source_video_id", "source_type",
-        "source_file", "body",
+        "source_file", "body", "notes",
     ]
     with open(path, "w", encoding="utf-8") as fh:
         for i in range(0, len(records), batch_size):
@@ -366,23 +433,24 @@ def write_verify_sql(records, path):
     sermon. This compares every row's length against the source CSV and
     returns only the rows that disagree, so a clean run prints nothing.
     """
-    pairs = ",\n    ".join(
-        f"({sql_literal(r['source_video_id'] or r['title'])}, {len(r['body'])})"
+    rows = ",\n    ".join(
+        f"({sql_literal(r['preacher'])}, {sql_literal(r['source_video_id'] or r['title'])}, {len(r['body'])})"
         for r in records
     )
-    query = f"""with expected (key, chars) as (values
-    {pairs}
+    query = f"""with expected (preacher, key, chars) as (values
+    {rows}
 )
-select e.key,
+select e.preacher,
+       e.key,
        e.chars as expected_chars,
        length(x.body) as actual_chars,
        case when x.id is null then 'missing' else 'truncated or altered' end as problem
 from expected e
 left join exemplar_sermons x
   on coalesce(x.source_video_id, x.title) = e.key
- and x.preacher = {sql_literal(records[0]['preacher']) if records else "''"}
+ and x.preacher = e.preacher
 where x.id is null or length(x.body) <> e.chars
-order by e.key;
+order by e.preacher, e.key;
 """
     with open(path, "w", encoding="utf-8") as fh:
         fh.write(query)
@@ -395,6 +463,8 @@ def main():
     ap.add_argument("--file", required=True, help="path to the CSV")
     ap.add_argument("--preacher", help="set by the operator, never inferred")
     ap.add_argument("--ministry", default=None)
+    ap.add_argument("--labels", default=None,
+                    help="CSV of title,preacher,ministry,notes overriding --preacher for listed titles")
     ap.add_argument("--source-file", default=None, help="audit trail; defaults to the basename")
     ap.add_argument("--survey", action="store_true", help="report what the file holds, write nothing")
     ap.add_argument("--apply", action="store_true", help="write to Supabase (default is a dry run)")
@@ -411,8 +481,9 @@ def main():
         raise SystemExit("ERROR: --preacher is required. It is set per file by the operator.")
 
     source_file = args.source_file or os.path.basename(args.file)
+    labels = load_labels(args.labels) if args.labels else None
     kept, skipped, dupes, total = build_records(
-        args.file, args.preacher, args.ministry, source_file
+        args.file, args.preacher, args.ministry, source_file, labels
     )
     report(source_file, args.preacher, total, kept, skipped, dupes)
 

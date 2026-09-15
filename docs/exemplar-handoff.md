@@ -1,5 +1,11 @@
 # Exemplar corpus: finishing the load locally
 
+> **Done 2026-09-15.** All three files are loaded and verified. See
+> `docs/exemplar-corpus.md` for what landed and how the mixed files were
+> labelled. Two things below turned out wrong. The REST load was not
+> idempotent (fixed). And the Jakes file mixed in far more than Sarah Jakes
+> Roberts. Kept for the record.
+
 Hand this to a local Claude Code session, or just run the commands yourself.
 Everything here is on branch `claude/gc3-exemplar-corpus-ingest-quw6bt`
 (draft PR #36).
