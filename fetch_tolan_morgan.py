@@ -31,19 +31,32 @@ import re
 import subprocess
 import sys
 
-# id, title, scripture, start offset in seconds (None = whole video)
+# id, title, scripture, start offset in seconds (None = whole video).
+# A title of None means take YouTube's own title for the video.
 SERMONS = [
-    ("Vb4xAhHXTeI", "It's About That Time",      "Acts 16:25-26",     None),
-    ("x0M0GI8jQfU", "It's Time to Recover",      "1 Samuel 30:3-19",  None),
-    ("rCrkqEeQ98w", "Touch Me Again",            "Mark 8:22-26",      None),
-    ("YxLTay9ZWmE", "I'm the One",               "Luke 17:11-19",     None),
-    ("_DUPhMY_k9I", "Signs of Life",             "John 20:1-9",       29 * 60),
-    ("TO_Pcu1o650", "He's Stretching Me",        "Mark 3:1-6",        None),
-    ("S3nRXWHQ1Zw", "Give Me Some Room",         "Genesis 26:12-25",  None),
-    ("6iBjzJXPgL4", "How to Stop the Bleeding",  "Mark 5:21-34",      98 * 60),
-    ("yQ0xFTL8ZGc", "I've Come Too Far to Quit", "Acts 4:13-22",      None),
-    ("SIa65bs3-NQ", "Keep Knocking",             "Acts 12:12-18",     None),
-    ("skc_SIxWe5E", "Why Did You Pick a Devil?", "John 6:66-71",      None),
+    # The eleven named in the style reference.
+    ("Vb4xAhHXTeI", "It's About That Time",          "Acts 16:25-26",      None),
+    ("x0M0GI8jQfU", "It's Time to Recover",          "1 Samuel 30:3-19",   None),
+    ("rCrkqEeQ98w", "Touch Me Again",                "Mark 8:22-26",       None),
+    ("YxLTay9ZWmE", "I'm the One",                   "Luke 17:11-19",      None),
+    ("_DUPhMY_k9I", "Signs of Life",                 "John 20:1-9",        29 * 60),
+    ("TO_Pcu1o650", "He's Stretching Me",            "Mark 3:1-6",         None),
+    ("S3nRXWHQ1Zw", "Give Me Some Room",             "Genesis 26:12-25",   None),
+    ("6iBjzJXPgL4", "How to Stop the Bleeding",      "Mark 5:21-34",       98 * 60),
+    ("yQ0xFTL8ZGc", "I've Come Too Far to Quit",     "Acts 4:13-22",       None),
+    ("SIa65bs3-NQ", "Keep Knocking",                 "Acts 12:12-18",      None),
+    ("skc_SIxWe5E", "Why Did You Pick a Devil?",     "John 6:66-71",       None),
+    # Found afterwards. The reference never knew about these.
+    ("ES3ozoT8We4", "Things Are Coming Together",    "1 Samuel 22:1-5",    None),
+    ("O78Am4b27Jk", "It Happened Behind Closed Doors", "2 Kings 4:1-7",    None),
+    ("Xrn5ygCtAv8", "Moving On From Your Mistakes",  "Psalm 51:10-15",     None),
+    ("RIQoU3Q1pvI", "It's A Faith Exam",             "Genesis 22:1-14",    None),
+    ("83fA7WpqNfA", "Has Anyone Heard From Ishmael?", "Genesis 21:14-21",  None),
+    ("AKgNbwUWXEc", "The Effects Of Living Water",   "John 4:25-42",       None),
+    ("DpaDJ3FxTvs", "I'm Catching A Case Of Grace",  "John 8:1-11",        None),
+    ("eiQs1wFvkqE", "I've Got A Plan",               "Jeremiah 29:1-11",   None),
+    ("5F5xWuCcpp8", "The Making of God's Leaders",   "Numbers 11:1-25",    None),
+    ("uZI2JVvGWM0", None,                            None,                 None),
 ]
 
 OUT = "tolan_morgan_sermons.csv"
@@ -103,6 +116,9 @@ def fetch(video_id, title, offset, workdir):
         err = (meta.stderr or "").strip().splitlines() if meta else ["timed out"]
         return None, f"video unavailable ({err[-1][:70] if err else 'unknown'})"
     info = json.loads(meta.stdout)
+    # No title in the list means we have not identified the sermon yet; take
+    # YouTube's, and let the operator rename it once they have watched it.
+    title = title or (info.get("title") or video_id).strip()
 
     stem = os.path.join(workdir, video_id)
     # Manual captions first; they are cleaner than the machine pass.
