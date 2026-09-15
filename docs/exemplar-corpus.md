@@ -47,11 +47,27 @@ Jakes Roberts, Cora Jakes and a dozen guest preachers. A single per-file
 whole reason the operator sets it per row when a survey shows a file is
 mixed.
 
-Twenty-seven rows are filed `Multiple speakers` or `Unattributed`, all in the
-Jakes file and averaging about 60,000 characters. Those are services and
-panels rather than one sermon, so they are the wrong shape for a rubric
-ceiling even though they are correctly stored. Decide whether the grader
-should see them before pointing it at the corpus.
+## What the grader should read
+
+`calibration_eligible` decides it. 603 rows are true, 26 are false.
+
+The 26 are the `Multiple speakers` rows, all in the Jakes file, averaging
+about 60,000 characters: panels, interviews, master classes, co-preached
+services, `Don't Drop The Mic` conversations. Correctly stored and correctly
+attributed; just not one preacher preaching one sermon, which is the only
+shape a rubric ceiling can be measured against. Each row's `notes` names the
+voices in it.
+
+    select * from exemplar_sermons where calibration_eligible;
+
+The column is curated by a person. The ingest never sets it, because nothing
+in a CSV row reliably says how many people are talking.
+
+One row is filed `Unattributed` and is still eligible: `Rightfully Mine!`,
+2021-04-11 on The Potter's House channel, one preacher whose name the title
+and transcript never give. It is a single sermon, so it is the right shape,
+but it cannot serve as a known-great benchmark while nobody knows whose it
+is. Worth a decision of its own.
 
 **PD's own preaching. Never goes in this table.**
 

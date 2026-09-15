@@ -26,6 +26,8 @@ create table if not exists exemplar_sermons (
   source_file       text not null,           -- which CSV this row came from
   body              text not null,
   notes             text,
+  -- May the grader use this row as a benchmark? See the comment below.
+  calibration_eligible boolean not null default true,
   created_at        timestamptz not null default now(),
   fts               tsvector generated always as
                       (to_tsvector('english', coalesce(title,'') || ' ' || coalesce(body,''))) stored
@@ -44,6 +46,13 @@ create unique index if not exists exemplar_sermons_dedupe_idx
 
 comment on table exemplar_sermons is
   'Outside preachers, held as litmus-test exemplars for the sermon grading engine. NOT PD''s corpus and never joined to it: sermons has its own fts and embedding, and mixing the two pollutes every ranked and semantic search. Column is named preacher, not speaker, so a query copy-pasted from sermons fails loudly.';
+
+comment on column exemplar_sermons.calibration_eligible is
+  'May the grading engine use this row as a benchmark? False means the row is correctly stored and correctly attributed, but is the wrong shape for a rubric ceiling - a panel, interview, master class or co-preached service rather than one preacher preaching one sermon. A limit on use, not a defect. notes says which. Curated by a person, never set by the ingest.';
+
+-- The grader reads the eligible rows, so that is the side worth indexing.
+create index if not exists exemplar_sermons_calibration_idx
+  on exemplar_sermons (calibration_eligible) where calibration_eligible;
 
 alter table exemplar_sermons enable row level security;
 
