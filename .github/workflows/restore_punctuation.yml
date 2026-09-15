@@ -21,9 +21,10 @@ on:
         default: 'both'
       limit:
         # Deliberately not blank by default. The full backlog is ~900 sermons
-        # and ~20M characters; an accidental unlimited run is a real bill.
+        # and 32.4M characters (~$288 on opus-5, measured); an accidental
+        # unlimited run is a real bill.
         # Blank it on purpose when you mean the whole thing.
-        description: 'Sermons per corpus (blank = ALL ~900, which costs real money — see the survey first)'
+        description: 'Sermons per corpus (blank = ALL 901, ~$288 on opus-5 — run the survey first)'
         type: string
         default: '3'
       model:

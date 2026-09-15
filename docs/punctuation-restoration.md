@@ -92,14 +92,25 @@ deliberate, and a model's instinct is to tidy it away. This catches that.
 
 ## Cost
 
-Roughly 20M characters remain, about 5.5M input tokens and a similar number
-out. At list prices, before any thinking tokens:
+Measured by `--survey` against the live corpus on 2026-09-15, not estimated:
 
-| model | rough cost |
+| corpus | sermons to restore | characters |
+|---|---:|---:|
+| `exemplar_sermons` | 509 | 20,471,380 |
+| `sermons` (PD) | 392 | 11,913,808 |
+| **total** | **901** | **32,385,188** |
+
+At list prices, before any thinking tokens:
+
+| model | cost |
 |---|---:|
-| `claude-opus-5` | ~$155 |
-| `claude-sonnet-5` | ~$62 |
-| `claude-haiku-4-5` | ~$31 |
+| `claude-opus-5` | ~$288 |
+| `claude-sonnet-5` | ~$115 |
+| `claude-haiku-4-5` | ~$58 |
+
+(An earlier draft of this file guessed 20M characters and so quoted roughly
+half these numbers. The corpus is 32.4M. Run `--survey` rather than trusting
+a remembered figure — it is free and it reads the live tables.)
 
 `claude-opus-5` is the default because it is the house default, not because
 this task demands it. The job runs at `effort: "low"` — inserting periods is
