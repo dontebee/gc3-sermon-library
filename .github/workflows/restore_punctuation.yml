@@ -20,11 +20,13 @@ on:
         options: ['both', 'exemplar', 'pd']
         default: 'both'
       limit:
-        # Deliberately not blank by default. The full backlog is ~900 sermons
-        # and 32.4M characters (~$288 on opus-5, measured); an accidental
-        # unlimited run is a real bill.
-        # Blank it on purpose when you mean the whole thing.
-        description: 'Sermons per corpus (blank = ALL 901, ~$288 on opus-5 — run the survey first)'
+        # Deliberately not blank by default: an accidental unlimited run is a
+        # real bill. But note you CANNOT ask for "all" by clearing this box.
+        # GitHub substitutes the default for an empty workflow_dispatch input,
+        # so a blank limit silently becomes 3 — which is exactly what happened
+        # on the first attempt at the full run: it dispatched --limit 3 while
+        # reporting itself as the whole corpus. Type `all` instead.
+        description: 'Sermons per corpus. A number, or `all` for every one of the 901 (~$58 on haiku, ~$288 on opus).'
         type: string
         default: '3'
       model:
@@ -82,7 +84,9 @@ jobs:
           fi
 
           ARGS="--source ${{ inputs.source }} --model ${{ inputs.model }}"
-          if [ -n "${{ inputs.limit }}" ]; then
+          # `all` is the only way to mean "no limit" — an empty input comes
+          # back as the default, not as empty. See the input description.
+          if [ -n "${{ inputs.limit }}" ] && [ "${{ inputs.limit }}" != "all" ]; then
             ARGS="$ARGS --limit ${{ inputs.limit }}"
           fi
           if [ -n "${{ inputs.sample_seed }}" ]; then
