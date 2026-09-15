@@ -63,6 +63,14 @@ RESTORER_VERSION = "restore-punctuation-1.0.0"
 # --model swaps it, and --survey prints what each tier would cost.
 DEFAULT_MODEL = "claude-opus-5"
 
+# output_config.effort is not universal. Haiku 4.5 rejects it outright with a
+# 400 ("This model does not support the effort parameter"); Opus 5 and
+# Sonnet 5 accept it. Found the hard way: the first Haiku trial sent it
+# anyway and every one of 121 chunks failed, which the summary then reported
+# as a 0% pass rate — a configuration error wearing the costume of a quality
+# measurement.
+EFFORT_UNSUPPORTED = {"claude-haiku-4-5"}
+
 # Below this many terminal marks per 1,000 characters, a body is treated as
 # unpunctuated. Same threshold the extractor uses; measured against real rows,
 # where punctuated sermons run 20+ and unpunctuated ones run 0–0.1.
@@ -177,6 +185,17 @@ def chunk_words(body, n=WORDS_PER_CHUNK):
 # The model call
 # ---------------------------------------------------------------------------
 
+def _is_fatal_request_error(exc):
+    """True for errors that will fail identically on every retry.
+
+    A 400 means the request itself is wrong — an unsupported parameter, a
+    bad model id, an oversized payload. No amount of retrying fixes it, and
+    retrying hides it. 401/403/404 are the same kind of wrong. Rate limits
+    (429) and server errors (5xx) are worth another go.
+    """
+    status = getattr(exc, "status_code", None)
+    return status in (400, 401, 403, 404)
+
 def restore_chunk(client, model, chunk, attempts=3):
     """Punctuate one chunk, verified. Returns (text, ok).
 
@@ -192,49 +211,74 @@ def restore_chunk(client, model, chunk, attempts=3):
     """
     prompt = USER_TEMPLATE.format(chunk=chunk)
     last_diff = None
+
+    request = {
+        "model": model,
+        "max_tokens": 16000,
+        "system": SYSTEM_PROMPT,
+    }
+    if model not in EFFORT_UNSUPPORTED:
+        # A mechanical task: adaptive thinking on (the default on Opus 5) but
+        # at the lowest effort, so it does not spend output tokens reasoning
+        # about where commas go. Not every model takes this — see the set.
+        request["output_config"] = {"effort": "low"}
+
     for attempt in range(attempts):
         try:
             response = client.messages.create(
-                model=model,
-                max_tokens=16000,
-                system=SYSTEM_PROMPT,
-                # A mechanical task: adaptive thinking on (the default on
-                # Opus 5) but at the lowest effort, so it does not spend
-                # output tokens reasoning about where commas go.
-                output_config={"effort": "low"},
+                **request,
                 messages=[{"role": "user",
                            "content": prompt + (RETRY_SUFFIX.format(diff=last_diff)
                                                 if last_diff else "")}],
             )
-        except Exception as exc:                      # noqa: BLE001 — logged, then retried
-            print(f"    api error ({type(exc).__name__}): {exc}", flush=True)
+        except Exception as exc:                      # noqa: BLE001 — classified below
+            fatal = _is_fatal_request_error(exc)
+            print(f"    api error ({type(exc).__name__}"
+                  f"{', not retryable' if fatal else ''}): {exc}", flush=True)
+            if fatal:
+                # A malformed request fails identically every time. Retrying
+                # it three times per chunk just burns wall clock and buries
+                # the real cause under a wall of identical log lines, which
+                # is exactly what happened on the first Haiku run: an
+                # unsupported `effort` parameter produced 0/121 chunks and
+                # looked, in the summary, like a catastrophic quality result.
+                return chunk, False, "api"
             time.sleep(2 ** attempt)
             continue
 
         if response.stop_reason == "refusal":
             print("    refused; keeping the original chunk", flush=True)
-            return chunk, False
+            return chunk, False, "refusal"
 
         out = "".join(b.text for b in response.content if b.type == "text").strip()
         if not out:
             continue
         if words_preserved(chunk, out):
-            return out, True
+            return out, True, None
         last_diff = first_difference(chunk, out)
         print(f"    attempt {attempt + 1} changed words — {last_diff}", flush=True)
 
-    return chunk, False
+    return chunk, False, "words_changed"
 
 
 def restore_body(client, model, body):
-    """Punctuate a whole sermon. Returns (text, chunks_total, chunks_verified)."""
+    """Punctuate a whole sermon.
+
+    Returns (text, chunks_total, chunks_verified, api_failures). The last one
+    is counted separately from verification failures on purpose: a chunk the
+    model mangled and a chunk the API refused to accept are the same outcome
+    for the text (the original survives) but completely different news for
+    whoever is reading the summary.
+    """
     chunks = chunk_words(body)
-    out, ok_count = [], 0
+    out, ok_count, api_failures = [], 0, 0
     for chunk in chunks:
-        text, ok = restore_chunk(client, model, chunk)
+        text, ok, reason = restore_chunk(client, model, chunk)
         out.append(text)
         ok_count += int(ok)
-    return "\n\n".join(out), len(chunks), ok_count
+        if reason == "api":
+            api_failures += 1
+    return "\n\n".join(out), len(chunks), ok_count, api_failures
 
 
 # ---------------------------------------------------------------------------
@@ -317,6 +361,11 @@ def fetch_already_restored(source):
 
 
 def write_rows(records, batch_size=5):
+    # _api_failures is run bookkeeping, not a column. PostgREST 400s on an
+    # unknown key, so drop it before the insert rather than at every call site.
+    records = [{k: v for k, v in r.items() if not k.startswith("_")}
+               for r in records]
+
     import requests
 
     url = gc3_env.supabase_url() + "/rest/v1/sermon_text_restored"
@@ -419,11 +468,12 @@ def main():
     def one(item):
         src, row = item
         who = row.get("preacher") or row.get("speaker") or "?"
-        restored, total, ok = restore_body(client, args.model, row["body"])
+        restored, total, ok, api_bad = restore_body(client, args.model, row["body"])
         flag = "ok " if ok == total else "PARTIAL"
         print(f"  [{flag}] {src} {row['id']:5} {who[:18]:18} "
               f"{row['title'][:40]:40} {ok}/{total} chunks", flush=True)
         return {
+            "_api_failures": api_bad,
             "source": src, "source_id": row["id"],
             "body_restored": restored,
             "verified": ok == total,
@@ -441,9 +491,22 @@ def main():
     chunks_total = sum(r["chunks_total"] for r in all_recs)
     chunks_ok = sum(r["chunks_verified"] for r in all_recs)
     print(f"\n{len(records)} fully verified, {len(failures)} partial.")
+    api_bad_total = sum(r.get("_api_failures", 0) for r in all_recs)
     print(f"Chunks: {chunks_ok}/{chunks_total} verified "
           f"({100.0 * chunks_ok / max(chunks_total, 1):.1f}%). "
           f"Every rejected chunk kept its original text.")
+
+    if api_bad_total:
+        share = 100.0 * api_bad_total / max(chunks_total, 1)
+        print()
+        print(f"  !! {api_bad_total}/{chunks_total} chunks ({share:.0f}%) failed on an "
+              f"API error, not on verification.")
+        print(f"  !! Those say NOTHING about how well {args.model} punctuates. Read the")
+        print(f"  !! error above and fix the request before judging the model. A pass")
+        print(f"  !! rate computed over failed requests is not a quality measurement.")
+        if share > 50:
+            print(f"  !! More than half this run never reached the model. Treat the")
+            print(f"  !! numbers below as void.")
 
     # Per-preacher, because the corpus is not one transcription source and a
     # model can do well on one and badly on another.
