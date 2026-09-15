@@ -21,9 +21,10 @@ on:
         default: 'both'
       limit:
         # Deliberately not blank by default. The full backlog is ~900 sermons
-        # and ~20M characters; an accidental unlimited run is a real bill.
+        # and 32.4M characters (~$288 on opus-5, measured); an accidental
+        # unlimited run is a real bill.
         # Blank it on purpose when you mean the whole thing.
-        description: 'Sermons per corpus (blank = ALL ~900, which costs real money — see the survey first)'
+        description: 'Sermons per corpus (blank = ALL 901, ~$288 on opus-5 — run the survey first)'
         type: string
         default: '3'
       model:
@@ -31,6 +32,14 @@ on:
         type: choice
         options: ['claude-opus-5', 'claude-sonnet-5', 'claude-haiku-4-5']
         default: 'claude-opus-5'
+      sample_seed:
+        # With a limit, take a spread across the corpus instead of the first N
+        # by id. id order is load order, so a prefix is all one preacher --
+        # useless for judging a model on a corpus that is mostly Jakes and
+        # Daniels. Set this for any trial run; leave blank for the real one.
+        description: 'Seed for a representative random sample (blank = first N by id). Set it for trial runs.'
+        type: string
+        default: ''
 
 # Reads sermons/exemplar_sermons, writes only sermon_text_restored. It sends
 # no mail, so the member-email rule in CLAUDE.md does not apply; it does spend
@@ -67,6 +76,9 @@ jobs:
           ARGS="--source ${{ inputs.source }} --model ${{ inputs.model }}"
           if [ -n "${{ inputs.limit }}" ]; then
             ARGS="$ARGS --limit ${{ inputs.limit }}"
+          fi
+          if [ -n "${{ inputs.sample_seed }}" ]; then
+            ARGS="$ARGS --sample-seed ${{ inputs.sample_seed }}"
           fi
           if [ "${{ inputs.dry_run }}" != "true" ]; then
             ARGS="$ARGS --apply"

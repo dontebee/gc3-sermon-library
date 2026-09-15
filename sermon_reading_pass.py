@@ -114,13 +114,22 @@ def build_record(source, row):
 
 
 def fetch_restored_bodies(source):
-    """{source_id: body_restored} for sermons whose punctuation was restored
-    and mechanically verified.
+    """{source_id: body_restored} for sermons whose punctuation was restored.
 
-    Only `verified` rows. A verified row is guaranteed to hold the same words
-    as the source body — restore_punctuation.py checks that rather than
-    trusting it — so reading this instead of the raw body changes where the
-    sentences break and nothing else. Unverified rows are ignored outright.
+    Every row here is word-safe, including the ones with `verified = false`,
+    and that is not a loose reading of the flag — it is how the restorer is
+    built. Each chunk is compared against its source and a chunk that changed
+    so much as one word is thrown away and replaced with the original text.
+    So the worst a row can be is *partly* punctuated. It can never be a
+    paraphrase.
+
+    `verified` therefore means "every chunk got punctuated", not "this text is
+    trustworthy". Filtering on it would have thrown away whole sermons over
+    one stubborn chunk: on the first real run, 13 of 17 chunks came back
+    clean, but because the four failures were spread across all three sermons,
+    a `verified`-only filter would have rejected every one of them and read
+    the raw bodies instead. A sermon that is five-sixths punctuated is far
+    better input than one that is not punctuated at all.
     """
     import requests
 
@@ -130,7 +139,7 @@ def fetch_restored_bodies(source):
                          headers={**_rest_headers(), "Range-Unit": "items",
                                   "Range": f"{offset}-{offset + page - 1}"},
                          params={"select": "source_id,body_restored",
-                                 "source": f"eq.{source}", "verified": "is.true"},
+                                 "source": f"eq.{source}"},
                          timeout=120)
         if r.status_code >= 300:
             # Table may not exist yet. Falling back to raw bodies is correct

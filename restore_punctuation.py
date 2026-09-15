@@ -26,10 +26,21 @@ then it is checked, because being told is not a guarantee:
     normalize(text) = lowercase, drop apostrophes, every other run of
                       non-alphanumerics becomes one space
 
-If normalize(input) != normalize(output), the chunk is rejected and retried;
-if it fails twice the ORIGINAL chunk is kept. So a stored row can differ from
-its source in punctuation, capitalization and whitespace, and in nothing
-else. That is a mechanical guarantee, not a promise about model behaviour.
+If normalize(input) != normalize(output), the chunk is rejected and retried
+with the offending span quoted back; after three attempts the ORIGINAL chunk
+is kept. So a stored row can differ from its source in punctuation,
+capitalization and whitespace, and in nothing else. That is a mechanical
+guarantee, not a promise about model behaviour.
+
+This matters because the model really does try. On the first run against real
+transcripts, 4 of 17 chunks were rejected, every one of them an attempted
+improvement: a stuttered "what what" collapsed to "what", "theyre in ducting"
+joined into "theyre inducting", a spelled-out "ar e h" tidied to "r e h".
+Those are the words Furtick actually said. They survive.
+
+`verified` on a stored row means every chunk got punctuated. It does NOT mean
+"safe to read" — every row is safe to read, because a failed chunk keeps its
+original text. A partial row is simply punctuated in fewer places.
 
 It also never writes to `sermons` or `exemplar_sermons`. Output goes to
 `sermon_text_restored`. See that schema for why.
@@ -37,6 +48,7 @@ It also never writes to `sermons` or `exemplar_sermons`. Output goes to
 import argparse
 import json
 import os
+import random
 import re
 import sys
 import time
@@ -94,8 +106,15 @@ order, with punctuation and capitalization added.
 
 RETRY_SUFFIX = """
 
-Your previous attempt changed at least one word. Return the SAME WORDS in the \
-SAME ORDER. Add only punctuation and capitalization."""
+Your previous attempt changed the words. Here is where it diverged:
+
+    {diff}
+
+The transcript is right and you are wrong. What looks like an error to you -- \
+a stutter, a word split in two, a letter spelled out oddly -- is what was \
+actually said, or what the transcriber actually wrote, and it must survive \
+verbatim. Reproduce that span exactly as it appears in the source, and add \
+only punctuation and capitalization."""
 
 
 # ---------------------------------------------------------------------------
@@ -158,13 +177,21 @@ def chunk_words(body, n=WORDS_PER_CHUNK):
 # The model call
 # ---------------------------------------------------------------------------
 
-def restore_chunk(client, model, chunk, attempts=2):
+def restore_chunk(client, model, chunk, attempts=3):
     """Punctuate one chunk, verified. Returns (text, ok).
 
     On failure the ORIGINAL chunk comes back with ok=False, so a caller that
     ignores the flag still never stores altered words.
+
+    The retry quotes the exact words that changed. A generic "you changed
+    something" nudge does not work: measured on the first real run, four of
+    six failures repeated the identical edit on the second attempt, because
+    the model is confidently fixing what it reads as a transcription error
+    ("theyre in ducting" -> "theyre inducting", a stuttered "what what" ->
+    "what"). Naming the span gives it something to act on.
     """
     prompt = USER_TEMPLATE.format(chunk=chunk)
+    last_diff = None
     for attempt in range(attempts):
         try:
             response = client.messages.create(
@@ -176,7 +203,8 @@ def restore_chunk(client, model, chunk, attempts=2):
                 # output tokens reasoning about where commas go.
                 output_config={"effort": "low"},
                 messages=[{"role": "user",
-                           "content": prompt + (RETRY_SUFFIX if attempt else "")}],
+                           "content": prompt + (RETRY_SUFFIX.format(diff=last_diff)
+                                                if last_diff else "")}],
             )
         except Exception as exc:                      # noqa: BLE001 — logged, then retried
             print(f"    api error ({type(exc).__name__}): {exc}", flush=True)
@@ -192,8 +220,8 @@ def restore_chunk(client, model, chunk, attempts=2):
             continue
         if words_preserved(chunk, out):
             return out, True
-        print(f"    attempt {attempt + 1} changed words — {first_difference(chunk, out)}",
-              flush=True)
+        last_diff = first_difference(chunk, out)
+        print(f"    attempt {attempt + 1} changed words — {last_diff}", flush=True)
 
     return chunk, False
 
@@ -225,7 +253,7 @@ def density(body):
     return 1000.0 * sum(body.count(c) for c in ".?!") / len(body)
 
 
-def fetch_sparse(source, limit=None, redo=False):
+def fetch_sparse(source, limit=None, redo=False, sample_seed=None):
     """Unpunctuated sermons that have no verified restoration yet."""
     import requests
 
@@ -258,6 +286,15 @@ def fetch_sparse(source, limit=None, redo=False):
     if not redo:
         done = fetch_already_restored(source)
         sparse = [r for r in sparse if r["id"] not in done]
+
+    if limit and sample_seed is not None and len(sparse) > limit:
+        # Take a spread, not a prefix. Rows come back in id order, and id
+        # order is load order, so the first N sparse exemplar rows are all
+        # one preacher — Furtick, who is 84% punctuated and therefore the
+        # least representative of the 509 that need this. Jakes and Daniels
+        # are 460 of them and sit further down. A prefix sample would measure
+        # the wrong transcription source entirely.
+        return random.Random(sample_seed).sample(sparse, limit)
 
     return sparse[:limit] if limit else sparse
 
@@ -346,6 +383,10 @@ def main():
     ap.add_argument("--workers", type=int, default=4, help="sermons in flight at once")
     ap.add_argument("--survey", action="store_true", help="count and price the work, do nothing")
     ap.add_argument("--redo", action="store_true", help="include sermons already restored")
+    ap.add_argument("--sample-seed", type=int, default=None,
+                    help="with --limit, take a seeded random spread across the corpus "
+                         "instead of the first N by id. Use for a representative trial: "
+                         "id order is load order, so a prefix is all one preacher.")
     ap.add_argument("--apply", action="store_true", help="write (default is a dry run)")
     args = ap.parse_args()
 
@@ -363,7 +404,7 @@ def main():
 
     work = []
     for src in sources:
-        for row in fetch_sparse(src, args.limit, args.redo):
+        for row in fetch_sparse(src, args.limit, args.redo, args.sample_seed):
             work.append((src, row))
     if not work:
         print("Nothing to restore.")
@@ -396,7 +437,29 @@ def main():
         for rec in pool.map(one, work):
             (records if rec["verified"] else failures).append(rec)
 
+    all_recs = records + failures
+    chunks_total = sum(r["chunks_total"] for r in all_recs)
+    chunks_ok = sum(r["chunks_verified"] for r in all_recs)
     print(f"\n{len(records)} fully verified, {len(failures)} partial.")
+    print(f"Chunks: {chunks_ok}/{chunks_total} verified "
+          f"({100.0 * chunks_ok / max(chunks_total, 1):.1f}%). "
+          f"Every rejected chunk kept its original text.")
+
+    # Per-preacher, because the corpus is not one transcription source and a
+    # model can do well on one and badly on another.
+    by_who = {}
+    for src, row in work:
+        who = row.get("preacher") or row.get("speaker") or "?"
+        rec = next((r for r in all_recs
+                    if r["source"] == src and r["source_id"] == row["id"]), None)
+        if rec:
+            t, o = by_who.setdefault(who, [0, 0])
+            by_who[who] = [t + rec["chunks_total"], o + rec["chunks_verified"]]
+    if len(by_who) > 1:
+        print("\nBy preacher:")
+        for who, (t, o) in sorted(by_who.items(), key=lambda kv: -kv[1][0]):
+            print(f"  {who[:24]:24} {o:4}/{t:4} chunks "
+                  f"({100.0 * o / max(t, 1):5.1f}%)")
     if records:
         sample = records[0]
         print(f"\nSample ({sample['source']} {sample['source_id']}), first 400 chars:")
