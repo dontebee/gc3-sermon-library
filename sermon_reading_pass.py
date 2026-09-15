@@ -113,20 +113,57 @@ def build_record(source, row):
     }
 
 
-def build_all(sources, limit=None):
-    records, skipped_empty = [], 0
-    if "exemplar" in sources:
-        for row in fetch_exemplar_rows(limit):
+def fetch_restored_bodies(source):
+    """{source_id: body_restored} for sermons whose punctuation was restored
+    and mechanically verified.
+
+    Only `verified` rows. A verified row is guaranteed to hold the same words
+    as the source body — restore_punctuation.py checks that rather than
+    trusting it — so reading this instead of the raw body changes where the
+    sentences break and nothing else. Unverified rows are ignored outright.
+    """
+    import requests
+
+    out, offset, page = {}, 0, 1000
+    while True:
+        r = requests.get(gc3_env.supabase_url() + "/rest/v1/sermon_text_restored",
+                         headers={**_rest_headers(), "Range-Unit": "items",
+                                  "Range": f"{offset}-{offset + page - 1}"},
+                         params={"select": "source_id,body_restored",
+                                 "source": f"eq.{source}", "verified": "is.true"},
+                         timeout=120)
+        if r.status_code >= 300:
+            # Table may not exist yet. Falling back to raw bodies is correct
+            # and safe; it just means sparse rows stay sparse.
+            print(f"NOTE: no restored text available for {source} "
+                  f"({r.status_code}); using raw bodies.")
+            return {}
+        chunk = r.json()
+        out.update({row["source_id"]: row["body_restored"] for row in chunk})
+        if len(chunk) < page:
+            break
+        offset += page
+    return out
+
+
+def build_all(sources, limit=None, use_restored=True):
+    records, skipped_empty, swapped = [], 0, 0
+
+    for source, fetch in (("exemplar", fetch_exemplar_rows), ("pd", fetch_pd_rows)):
+        if source not in sources:
+            continue
+        restored = fetch_restored_bodies(source) if use_restored else {}
+        for row in fetch(limit):
             if not (row.get("body") or "").strip():
                 skipped_empty += 1
                 continue
-            records.append(build_record("exemplar", row))
-    if "pd" in sources:
-        for row in fetch_pd_rows(limit):
-            if not (row.get("body") or "").strip():
-                skipped_empty += 1
-                continue
-            records.append(build_record("pd", row))
+            if row["id"] in restored:
+                row = {**row, "body": restored[row["id"]]}
+                swapped += 1
+            records.append(build_record(source, row))
+
+    if swapped:
+        print(f"Read restored (punctuation-repaired) text for {swapped} sermons.")
     return records, skipped_empty
 
 
@@ -211,6 +248,9 @@ def main():
     ap.add_argument("--survey", action="store_true", help="report corpus sizes, write nothing")
     ap.add_argument("--sql-out", default=None, help="emit SQL instead of inserting")
     ap.add_argument("--apply", action="store_true", help="write to Supabase (default is a dry run)")
+    ap.add_argument("--raw-bodies", action="store_true",
+                    help="ignore sermon_text_restored and read the original unpunctuated "
+                         "bodies; use to compare a run against the pre-restoration one")
     args = ap.parse_args()
 
     sources = ["exemplar", "pd"] if args.source == "both" else [args.source]
@@ -219,7 +259,7 @@ def main():
         survey(sources)
         return
 
-    records, skipped_empty = build_all(sources, args.limit)
+    records, skipped_empty = build_all(sources, args.limit, use_restored=not args.raw_bodies)
     report(records, skipped_empty)
 
     if args.sql_out:
