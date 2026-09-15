@@ -1,0 +1,75 @@
+name: Restore punctuation on unpunctuated transcripts
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        # Defaults ON, per house rule (see CLAUDE.md). Unlike the other jobs
+        # in this repo, a live run here also spends money at the Anthropic
+        # API, so the default matters twice over.
+        description: 'Dry run (restore and print, write nothing). Untick to store.'
+        type: boolean
+        default: true
+      survey:
+        description: 'Survey only: count the remaining work and price it, call no model at all. Overrides everything else.'
+        type: boolean
+        default: false
+      source:
+        description: 'Which corpus'
+        type: choice
+        options: ['both', 'exemplar', 'pd']
+        default: 'both'
+      limit:
+        # Deliberately not blank by default. The full backlog is ~900 sermons
+        # and ~20M characters; an accidental unlimited run is a real bill.
+        # Blank it on purpose when you mean the whole thing.
+        description: 'Sermons per corpus (blank = ALL ~900, which costs real money — see the survey first)'
+        type: string
+        default: '3'
+      model:
+        description: 'Model to restore with'
+        type: choice
+        options: ['claude-opus-5', 'claude-sonnet-5', 'claude-haiku-4-5']
+        default: 'claude-opus-5'
+
+# Reads sermons/exemplar_sermons, writes only sermon_text_restored. It sends
+# no mail, so the member-email rule in CLAUDE.md does not apply; it does spend
+# money, which is why dry_run and the limit both default conservatively.
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Restore punctuation
+        env:
+          # Four spellings, two values, one Supabase project. gc3_env.py
+          # picks whichever is set, preferring the intranet's names.
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ "${{ inputs.survey }}" = "true" ]; then
+            python restore_punctuation.py --survey --source ${{ inputs.source }}
+            exit 0
+          fi
+
+          ARGS="--source ${{ inputs.source }} --model ${{ inputs.model }}"
+          if [ -n "${{ inputs.limit }}" ]; then
+            ARGS="$ARGS --limit ${{ inputs.limit }}"
+          fi
+          if [ "${{ inputs.dry_run }}" != "true" ]; then
+            ARGS="$ARGS --apply"
+          fi
+          echo "python restore_punctuation.py $ARGS"
+          python restore_punctuation.py $ARGS
