@@ -301,7 +301,8 @@ def density(body):
     return 1000.0 * sum(body.count(c) for c in ".?!") / len(body)
 
 
-def fetch_sparse(source, limit=None, redo=False, sample_seed=None):
+def fetch_sparse(source, limit=None, redo=False, sample_seed=None,
+                 redo_partial=False):
     """Unpunctuated sermons with no restoration yet — ids and titles, no bodies.
 
     Reads the `sermon_sparse_candidates` view, which decides the punctuation
@@ -325,7 +326,7 @@ def fetch_sparse(source, limit=None, redo=False, sample_seed=None):
     sparse = r.json()
 
     if not redo:
-        done = fetch_already_restored(source)
+        done = fetch_already_restored(source, include_partial=not redo_partial)
         sparse = [row for row in sparse if row["id"] not in done]
 
     if limit and sample_seed is not None and len(sparse) > limit:
@@ -355,15 +356,27 @@ def fetch_body(source, sermon_id):
     return rows[0]["body"] if rows else None
 
 
-def fetch_already_restored(source):
-    """ids with a verified restoration, so a re-run resumes instead of repeating."""
+def fetch_already_restored(source, include_partial=True):
+    """ids already restored, so a re-run resumes instead of repeating.
+
+    Any stored row counts, not just `verified` ones. This filtered on
+    verified when that flag was still being treated as a trust gate, and the
+    filter outlived the idea: after the full run, 891 sermons were stored but
+    only 192 were verified, so resuming would have re-restored 699 perfectly
+    good partial sermons — roughly $45 on Haiku — to fill 10 gaps. A partial
+    row is real work already paid for, and the reading pass reads it.
+
+    include_partial=False deliberately redoes the partial ones, which is the
+    right call only when a better model or prompt might punctuate the chunks
+    that failed last time.
+    """
     import requests
 
+    params = {"select": "source_id", "source": f"eq.{source}"}
+    if not include_partial:
+        params["verified"] = "is.true"
     r = requests.get(gc3_env.supabase_url() + "/rest/v1/sermon_text_restored",
-                     headers=_rest_headers(),
-                     params={"select": "source_id", "source": f"eq.{source}",
-                             "verified": "is.true"},
-                     timeout=60)
+                     headers=_rest_headers(), params=params, timeout=60)
     if r.status_code >= 300:
         # The table may not exist yet on a first run; that is not fatal.
         print(f"NOTE: could not read sermon_text_restored ({r.status_code}); "
@@ -447,6 +460,10 @@ def main():
     ap.add_argument("--workers", type=int, default=4, help="sermons in flight at once")
     ap.add_argument("--survey", action="store_true", help="count and price the work, do nothing")
     ap.add_argument("--redo", action="store_true", help="include sermons already restored")
+    ap.add_argument("--redo-partial", action="store_true",
+                    help="also redo sermons stored with some chunks unpunctuated. Costs "
+                         "real money to improve coverage on work already done; the plain "
+                         "resume skips them.")
     ap.add_argument("--sample-seed", type=int, default=None,
                     help="with --limit, take a seeded random spread across the corpus "
                          "instead of the first N by id. Use for a representative trial: "
