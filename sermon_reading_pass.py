@@ -24,6 +24,14 @@ import sys
 import gc3_env
 import reading_pass_extract as X
 
+# Rows per request when the select includes a body. Deliberately small.
+# restore_punctuation.py asked for 1,000 bodies at a time and Postgres killed
+# the statement outright (500 / 57014, "canceling statement due to statement
+# timeout") - roughly 33MB in one response. These tables hold the same
+# transcripts, so the same ceiling applies here; the whole corpus still
+# arrives, just in more and smaller pieces.
+BODY_PAGE = 50
+
 
 def _rest_headers():
     key = gc3_env.service_key()
@@ -46,7 +54,7 @@ def fetch_exemplar_rows(limit=None):
     import requests
     url = gc3_env.supabase_url() + "/rest/v1/exemplar_sermons"
     headers = _rest_headers()
-    rows, offset, page = [], 0, 1000
+    rows, offset, page = [], 0, BODY_PAGE
     while True:
         # Offset pagination via the Range header (PostgREST convention).
         resp_headers = {**headers, "Range-Unit": "items", "Range": f"{offset}-{offset + page - 1}"}
@@ -79,7 +87,7 @@ def fetch_pd_rows(limit=None):
     select_with = "id,title,preached_date,speaker,body,source_type"
     select_without = "id,title,preached_date,speaker,body"
     select = select_with
-    rows, offset, page = [], 0, 1000
+    rows, offset, page = [], 0, BODY_PAGE
     while True:
         r = requests.get(url, headers={**headers, "Range-Unit": "items",
                                         "Range": f"{offset}-{offset + page - 1}"},
@@ -133,7 +141,7 @@ def fetch_restored_bodies(source):
     """
     import requests
 
-    out, offset, page = {}, 0, 1000
+    out, offset, page = {}, 0, BODY_PAGE
     while True:
         r = requests.get(gc3_env.supabase_url() + "/rest/v1/sermon_text_restored",
                          headers={**_rest_headers(), "Range-Unit": "items",
