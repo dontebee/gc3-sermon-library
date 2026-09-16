@@ -242,19 +242,37 @@ def write_sql(records, path):
     print(f"Wrote {len(records)} rows to {path}.")
 
 
-def write_rows(records, batch_size=10):
+def write_rows(records, batch_size=3):
+    """Insert in small batches, and survive a batch that fails.
+
+    Ten rows a batch timed out at 150 sermons: these rows carry large jsonb
+    arrays, and ten of them in one statement is more than Postgres will chew
+    through inside its timeout. Three is well inside it.
+
+    A failed batch is logged and skipped rather than fatal. Rows upsert on
+    (source, source_id), so a re-run fills whatever did not land; aborting
+    would throw away every sermon already extracted, which is what happened
+    on the first full attempt.
+    """
     import requests
     url = gc3_env.supabase_url() + "/rest/v1/sermon_reading_pass"
     headers = {**_rest_headers(), "Prefer": "resolution=merge-duplicates,return=minimal"}
-    written = 0
+    written, failed = 0, []
     for i in range(0, len(records), batch_size):
         batch = records[i:i + batch_size]
         resp = requests.post(url, headers=headers, params={"on_conflict": "source,source_id"},
                               data=json.dumps(batch), timeout=180)
         if resp.status_code >= 300:
-            raise SystemExit(f"ERROR: insert failed ({resp.status_code}): {resp.text[:400]}")
+            ids = ", ".join(f"{r['source']}:{r['source_id']}" for r in batch)
+            print(f"  !! batch failed ({resp.status_code}) [{ids}]: {resp.text[:200]}",
+                  flush=True)
+            failed.extend(batch)
+            continue
         written += len(batch)
-        print(f"  ... {written}/{len(records)}", flush=True)
+        if written % 150 == 0 or written == len(records):
+            print(f"  ... {written}/{len(records)}", flush=True)
+    if failed:
+        print(f"  !! {len(failed)} rows did not land; re-run to fill them in.", flush=True)
     return written
 
 

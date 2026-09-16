@@ -347,11 +347,19 @@ def find_devices(sentences, char_len, claim_anchors):
     devices = []
 
     def nearest_claim(offset):
+        """Offset of the nearest preceding claim anchor, or None.
+
+        Returns the offset alone. It used to return the text too, and every
+        device carried a copy — the same governing-claim string repeated 90
+        times in a single row. That one field was most of the payload, and
+        it is what made the insert time out at 150 sermons. The text is
+        already in this row's governing_claim/tension; a reader joins on the
+        offset.
+        """
         prior = [a for a in claim_anchors if a[0] is not None and a[0] <= offset]
         if not prior:
-            return None, None
-        a = max(prior, key=lambda a: a[0])
-        return a
+            return None
+        return max(prior, key=lambda a: a[0])[0]
 
     for offset, text in sentences:
         words = re.findall(r"[A-Za-z']+", text)
@@ -362,27 +370,24 @@ def find_devices(sentences, char_len, claim_anchors):
             if words[i][:1].lower() == words[i - 1][:1].lower() and words[i][:1].isalpha():
                 run += 1
                 if run == 3:
-                    claim_off, claim_txt = nearest_claim(offset)
+                    claim_off = nearest_claim(offset)
                     devices.append({"type": "alliteration", "offset": offset,
                                      "pct": pct(offset, char_len), "verbatim": text,
-                                     "nearest_claim_offset": claim_off,
-                                     "nearest_claim_verbatim": claim_txt})
+                                     "nearest_claim_offset": claim_off})
             else:
                 run = 1
 
         if _CONTRAST_RE.search(text):
-            claim_off, claim_txt = nearest_claim(offset)
+            claim_off = nearest_claim(offset)
             devices.append({"type": "contrast", "offset": offset,
                              "pct": pct(offset, char_len), "verbatim": text,
-                             "nearest_claim_offset": claim_off,
-                             "nearest_claim_verbatim": claim_txt})
+                             "nearest_claim_offset": claim_off})
 
         if _SIMILE_RE.search(text):
-            claim_off, claim_txt = nearest_claim(offset)
+            claim_off = nearest_claim(offset)
             devices.append({"type": "simile", "offset": offset,
                              "pct": pct(offset, char_len), "verbatim": text,
-                             "nearest_claim_offset": claim_off,
-                             "nearest_claim_verbatim": claim_txt})
+                             "nearest_claim_offset": claim_off})
 
     # Anaphora / epistrophe: 3+ sentences (within a 15-sentence window)
     # sharing the same opening or closing 3+ word phrase.
@@ -402,11 +407,10 @@ def find_devices(sentences, char_len, claim_anchors):
             for p, hits in seen.items():
                 if len(hits) >= 3:
                     offset, text = hits[0]
-                    claim_off, claim_txt = nearest_claim(offset)
+                    claim_off = nearest_claim(offset)
                     devices.append({"type": label, "offset": offset,
                                      "pct": pct(offset, char_len), "verbatim": text,
-                                     "nearest_claim_offset": claim_off,
-                                     "nearest_claim_verbatim": claim_txt})
+                                     "nearest_claim_offset": claim_off})
         break  # 3-word phrases only; drop to 2-word gets too noisy to be useful
 
     # Echo: a distinctive word (>=6 letters, not a stopword) repeated within
@@ -420,11 +424,10 @@ def find_devices(sentences, char_len, claim_anchors):
             if wl in stop:
                 continue
             if text.lower().count(wl) >= 2:
-                claim_off, claim_txt = nearest_claim(offset)
+                claim_off = nearest_claim(offset)
                 devices.append({"type": "echo", "offset": offset,
                                  "pct": pct(offset, char_len), "verbatim": text,
-                                 "nearest_claim_offset": claim_off,
-                                 "nearest_claim_verbatim": claim_txt})
+                                 "nearest_claim_offset": claim_off})
                 break
 
     devices.sort(key=lambda d: d["offset"])
