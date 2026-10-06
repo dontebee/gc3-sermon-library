@@ -254,8 +254,34 @@ def heal_textless():
     return healed, len(rows)
 
 
+def refresh_live_capture(sermon_id, video_id, title, dur):
+    """A row saved while the stream was still live: a few seconds long, a few
+    words of transcript (Oct 4 2026's 9:19 sat at 14 seconds and 292
+    characters). Once YouTube lists the finished video, take its captions and
+    length. The date, the series pin and anything a person set stay as they are."""
+    with tempfile.TemporaryDirectory() as tmp:
+        vtt = fetch_captions(video_id, tmp)
+        if not vtt:
+            print("  live capture, captions not ready yet:", title[:60])
+            return 0
+        body = clean_vtt(vtt)
+    patch = {"body": body, "duration_seconds": int(dur)}
+    analysis = enrich(title, body) if ANTHROPIC_API_KEY else None
+    if analysis:
+        patch["big_idea"] = analysis.get("big_idea")
+        patch["scriptures"] = analysis.get("scriptures") or []
+        patch["themes"] = analysis.get("themes") or []
+        patch["quotes"] = analysis.get("quotes") or []
+    sb.table("sermons").update(patch).eq("id", sermon_id).execute()
+    if analysis:
+        save_analysis_children(sermon_id, analysis)
+    print(f"REFRESHED [captured while live, now {int(dur) // 60}m]:", title)
+    return 1
+
+
 def main():
     checked = added = skip_existing = skip_filtered = skip_nocaps = errored = 0
+    refreshed = 0
     filtered_titles = []
     for d in recent_videos():
         checked += 1
@@ -278,7 +304,12 @@ def main():
                 filtered_titles.append((hit, title))
                 print(f"SKIPPED [matched '{hit}']:", title)
                 continue
-            if sb.table("sermons").select("id").eq("youtube_video_id", vid).execute().data:
+            existing = (sb.table("sermons").select("id,duration_seconds")
+                        .eq("youtube_video_id", vid).execute().data)
+            if existing:
+                ex = existing[0]
+                if dur and (ex.get("duration_seconds") or 0) < MIN_DURATION_SECONDS <= dur:
+                    refreshed += refresh_live_capture(ex["id"], vid, title, dur)
                 skip_existing += 1
                 continue
             # No captions used to mean the sermon was dropped entirely and forgotten.
@@ -344,7 +375,7 @@ def main():
     healed, pending = heal_textless()
 
     print(f"\nWeekly run complete. checked={checked} added={added} " 
-          f"saved_without_text={skip_nocaps} healed={healed} " 
+          f"saved_without_text={skip_nocaps} healed={healed} refreshed_live={refreshed} " 
           f"skipped_existing={skip_existing} skipped_filtered={skip_filtered} " 
           f"errored={errored}")
 

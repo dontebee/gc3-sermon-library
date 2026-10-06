@@ -8,7 +8,7 @@ words. Fix a lesson in GrowthTrack and the next run reprints the guide.
 
 When it runs:
   - a message joins a series (pinned, alias, or untagged inside the window)
-  - GrowthTrack rebuilds a pack
+  - GrowthTrack rebuilds a pack, or someone edits one (a title fixed by hand)
   - the series' title, sticky line or cover changes
 it prints fresh guides and files them on the series in the Studio,
 UNPUBLISHED. The guide already on the Sermon Calendar stays up until someone
@@ -173,6 +173,13 @@ def checks_for(messages):
             "note": "Printed from the GrowthTrack course packs. Approve by eye."}
 
 
+def pack_hash(pack):
+    """What the guide actually prints from. Hashing the content, not
+    pack_built_at, means a title or quote fixed by hand in GrowthTrack reprints
+    the guide too; a rebuild that changes nothing does not."""
+    return hashlib.sha1(json.dumps(pack, sort_keys=True, default=str).encode()).hexdigest()
+
+
 def signature(parts):
     return hashlib.sha1(json.dumps([LAYOUT_VERSION, parts], sort_keys=True, default=str).encode()).hexdigest()
 
@@ -238,7 +245,7 @@ def main():
             continue
         running = TODAY <= d(s["ends_on"])
         scope = f"series:{s['id']}"
-        sig = signature([[l["sermon_id"], l["pack_built_at"]] for l in ls]
+        sig = signature([[l["sermon_id"], pack_hash(l["pack"])] for l in ls]
                         + [s["title"], s["sticky_line"], s["anchor_scripture"], s["cover_path"], running])
         prev = builds.get(scope)
         if prev and prev["signature"] == sig:
@@ -275,7 +282,7 @@ def main():
 
     for l in one_offs:
         scope = f"sermon:{l['sermon_id']}"
-        sig = signature([l["sermon_id"], l["pack_built_at"]])
+        sig = signature([l["sermon_id"], pack_hash(l["pack"])])
         prev = builds.get(scope)
         title = l["pack"].get("title") or "Message"
         if prev and prev["signature"] == sig:

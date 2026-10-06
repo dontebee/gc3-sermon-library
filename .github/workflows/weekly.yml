@@ -2,7 +2,14 @@ name: Weekly sermon pull
 
 on:
   schedule:
-    - cron: '0 13 * * 1'   # Mondays at 13:00 UTC (about 7am Central)
+    # Sunday night, so Sunday's messages are in the library (and on the
+    # Calendar, in the Extra Mile and in the series guides) before Monday.
+    # 03:00 UTC is 10pm Sunday in summer time, 9pm in winter: both services
+    # are long finished and YouTube has had the afternoon to make captions.
+    - cron: '0 3 * * 1'
+    # Monday morning again as a backstop: anything whose captions were still
+    # cooking on Sunday night lands here. A run with nothing new adds nothing.
+    - cron: '0 13 * * 1'
   workflow_dispatch: {}      # also allows a manual run from the Actions tab
 
 jobs:
@@ -33,9 +40,31 @@ jobs:
           YT_COOKIES_DATA: ${{ secrets.YT_COOKIES }}
         run: |
           if [ -n "$YT_COOKIES_DATA" ]; then
-            printf '%s' "$YT_COOKIES_DATA" > cookies.txt
+            # yt-dlp only reads the Netscape cookies.txt format. A browser
+            # extension's JSON export (Cookie-Editor, EditThisCookie) was saved
+            # here instead, and every run from Sept 14 to Oct 5 2026 listed
+            # nothing: "Cookies file must be Netscape formatted, not JSON".
+            # Accept either: JSON is converted, cookies.txt passes through.
+            printf '%s' "$YT_COOKIES_DATA" | python3 -c '
+          import json, sys
+          raw = sys.stdin.read()
+          if raw.lstrip()[:1] not in "[{":
+              sys.stdout.write(raw); sys.exit()
+          data = json.loads(raw)
+          rows = data.get("cookies", data) if isinstance(data, dict) else data
+          print("# Netscape HTTP Cookie File")
+          for c in rows:
+              dom = c.get("domain", "")
+              sub = "FALSE" if c.get("hostOnly") else "TRUE"
+              if sub == "TRUE" and not dom.startswith("."):
+                  dom = "." + dom
+              pre = "#HttpOnly_" if c.get("httpOnly") else ""
+              exp = int(c.get("expirationDate") or c.get("expires") or 0)
+              sec = "TRUE" if c.get("secure") else "FALSE"
+              print("\t".join([pre + dom, sub, c.get("path", "/"), sec, str(exp), c["name"], c["value"]]))
+          ' > cookies.txt
             echo "YT_COOKIES=cookies.txt" >> "$GITHUB_ENV"
-            echo "cookies.txt written; yt-dlp will use it"
+            echo "cookies.txt written ($(grep -c "$(printf '\t')" cookies.txt) cookies); yt-dlp will use it"
           else
             echo "no YT_COOKIES secret; running without cookies"
           fi
