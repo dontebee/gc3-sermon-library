@@ -42,6 +42,22 @@ def clean(s):
     return s.encode("cp1252", "replace").decode("cp1252").strip()
 
 
+def cover_jpeg(data, width=1400):
+    """Series art arrives as a full-size PNG (6 MB of guide for a band of
+    cover). Shrink it to print width and re-encode as JPEG so the download
+    stays phone-sized. Falls back to the original if Pillow can't read it."""
+    try:
+        from PIL import Image
+        im = Image.open(io.BytesIO(data)).convert("RGB")
+        if im.width > width:
+            im = im.resize((width, round(im.height * width / im.width)), Image.LANCZOS)
+        out = io.BytesIO()
+        im.save(out, "JPEG", quality=82, optimize=True)
+        return out.getvalue()
+    except Exception:
+        return data
+
+
 def living_it(pack):
     """The points under the lesson's closing "Living it" heading, if it has one."""
     out, inside = [], False
@@ -138,7 +154,7 @@ class Guide:
         band = W * 1080 / 1920 * 0.86
         if self.cover:
             try:
-                img = ImageReader(io.BytesIO(self.cover))
+                img = ImageReader(io.BytesIO(cover_jpeg(self.cover)))
                 iw, ih = img.getSize()
                 dh = W * ih / iw
                 self.c.saveState()
