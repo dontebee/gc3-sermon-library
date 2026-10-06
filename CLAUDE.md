@@ -28,6 +28,12 @@ What legitimately lives here:
   and it never uploads member or donor data to Meta (no Custom Audiences
   from `giving_gifts`, `gt_*`, or any house table — that is house data used
   to target the house)
+- the daily series guides (`series_guides.py`): the Personal Guide and Tribe
+  Guide PDFs on the Sermon Calendar, printed straight from GrowthTrack's course
+  packs (`gt_el_lessons.pack`) and filed in the Studio **unpublished**. It
+  writes no copy of its own, so the booklet and the course are the same words:
+  fix a lesson in GrowthTrack and the next run reprints the guide. It sends
+  nothing to anyone.
 
 **Why the rule exists.** On 2026-08-05 `engagement_nudges.py` sent 30
 monthly-partner invitations to donors who had given $38,759 in the previous 90

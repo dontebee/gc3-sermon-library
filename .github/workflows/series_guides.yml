@@ -1,0 +1,54 @@
+name: Series guides from GrowthTrack
+
+on:
+  schedule:
+    # Daily at 12:40 UTC (about 7:40am Central). GrowthTrack builds Sunday's
+    # packs Sunday afternoon and evening, so Monday morning's run picks them
+    # up; the other mornings catch a pack rebuilt mid-week. A run with nothing
+    # new does nothing.
+    - cron: '40 12 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        # Defaults ON for manual runs, like every job in this repo. A dry run
+        # prints the PDFs and attaches them to the run (Artifacts, at the
+        # bottom of the run page) without touching the Studio. Untick to file
+        # them for real. Scheduled runs are unaffected and always file.
+        description: 'Dry run (attach the PDFs to this run, write nothing). Untick to file them in the Studio.'
+        type: boolean
+        default: true
+      guides_from:
+        description: 'Only series ending on/after this date (blank = 2026-09-01). Set earlier to reprint older series.'
+        type: string
+        default: ''
+
+jobs:
+  guides:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Print the guides
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && '1' || '' }}
+          GUIDES_FROM: ${{ inputs.guides_from }}
+        run: python series_guides.py
+
+      - name: Attach the dry-run PDFs
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: series-guides
+          path: guides-out/
+          if-no-files-found: ignore
