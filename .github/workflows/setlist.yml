@@ -1,0 +1,53 @@
+name: Setlist graphic
+
+on:
+  schedule:
+    # Fridays at 09:47 UTC (3:47 or 4:47am Central). The job draws the
+    # graphics and looks up the artists early, then hands the email to Resend
+    # scheduled for 7:00am Central, so GitHub's queue delays and daylight
+    # saving never move the send time.
+    - cron: '47 9 * * 5'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        # Defaults ON for manual runs, like every job in this repo. A dry run
+        # draws the graphics and attaches them to the run (Artifacts, at the
+        # bottom of the run page) without emailing anyone. Untick to send.
+        description: 'Dry run (attach the graphics to this run, email nobody). Untick to send.'
+        type: boolean
+        default: true
+
+jobs:
+  setlist:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        # Pinned here rather than in requirements.txt: the artist lookup needs
+        # the 1.x SDK, and the other jobs have not been moved to it.
+        run: pip install requests pillow "anthropic==1.12.1"
+
+      - name: Draw and send the setlist
+        env:
+          PCO_APP_ID: ${{ secrets.PCO_APP_ID }}
+          PCO_SECRET: ${{ secrets.PCO_SECRET }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          DIGEST_TO: ${{ secrets.DIGEST_TO || vars.DIGEST_TO }}
+          # More staff recipients, comma separated, @godchasers.church only.
+          SETLIST_EXTRA_TO: ${{ secrets.SETLIST_EXTRA_TO || vars.SETLIST_EXTRA_TO }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && '1' || '' }}
+        run: python setlist_graphic.py
+
+      - name: Attach the graphics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: setlist
+          path: setlist-out/
+          if-no-files-found: ignore

@@ -34,6 +34,13 @@ What legitimately lives here:
   writes no copy of its own, so the booklet and the course are the same words:
   fix a lesson in GrowthTrack and the next run reprints the guide. It sends
   nothing to anyone.
+- the Friday setlist graphic (`setlist_graphic.py`): reads the coming week's
+  songs from Planning Center **Services**, finds each song's recording artist
+  on the web, draws the social graphics, and emails them at 7am Central to
+  **staff** (PD, media@, Latwanna, Tiffany) with a caption to share. It has its own
+  guard, `staff_only()`, which refuses anything but DIGEST_TO and
+  `@godchasers.church` mailboxes. It is a work email to the people who post,
+  never a member email.
 
 **Why the rule exists.** On 2026-08-05 `engagement_nudges.py` sent 30
 monthly-partner invitations to donors who had given $38,759 in the previous 90
