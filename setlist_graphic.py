@@ -1,8 +1,10 @@
 """Fridays: Sunday's setlist from Planning Center, made into graphics for social.
 
 Reads the songs on the coming week's plans in Planning Center **Services**,
-draws three setlist graphics (each as a 4:5 feed post and a 9:16 story) and
-emails them to the staff who post them: PD, media@, Latwanna and Tiffany.
+looks up each song's recording artist on the web (PCO only knows the
+songwriters), draws three setlist graphics (each as a 4:5 feed post and a 9:16
+story) and emails them at 7am Central to the staff who post them: PD, media@,
+Latwanna and Tiffany, asking them to share it with a ready-made caption.
 
 This is a STAFF email. It never goes to a member. `send_staff_email()` refuses
 any address that is not DIGEST_TO or an @godchasers.church mailbox, so a typo
@@ -16,6 +18,7 @@ whether the job ran.
 Env:
   PCO_APP_ID, PCO_SECRET   Planning Center personal access token
   RESEND_API_KEY           sending (absent = dry run)
+  ANTHROPIC_API_KEY        artist lookup (absent = credit the songwriters)
   DIGEST_TO                PD's address (default dontebee@gmail.com)
   SETLIST_EXTRA_TO         more staff, comma separated, @godchasers.church only
                            (the social team's address goes here)
@@ -142,11 +145,84 @@ def plan_songs(plan):
         m = re.search(r"\s*\((?:feat\.?|ft\.?|featuring)\s+([^)]+)\)\s*$", title, re.I)
         if m:
             feat, title = m.group(1).strip(), title[:m.start()].strip()
-        credit = credit_line(song.get("author"))
-        if feat:
-            credit = f"feat. {feat}" + (f"  /  {credit}" if credit else "")
-        out.append({"title": title, "credit": credit})
+        out.append({"title": title, "feat": feat, "writers": song.get("author") or "",
+                    "artist": "", "credit": ""})
     return out
+
+
+ARTIST_MODEL = "claude-opus-5-5"
+ANTHROPIC_API_KEY = (os.environ.get("ANTHROPIC_API_KEY") or "").strip()
+
+
+def find_artists(songs):
+    """Fill in each song's recording artist by searching the web.
+
+    Planning Center keeps the songwriters, not who recorded it, and a setlist
+    post credits the recording ("Elevation Worship", not five writers). Claude
+    searches for each title, using the writers to tell apart songs that share a
+    name. Anything it cannot pin down stays blank and the credit falls back to
+    the writers, so a wrong guess never beats an honest one.
+    """
+    if not songs or not ANTHROPIC_API_KEY:
+        if songs:
+            print("  no ANTHROPIC_API_KEY; crediting songwriters")
+        return
+    import json
+    import anthropic
+    lines = "\n".join(f"{i + 1}. \"{s['title']}\""
+                      + (f" feat. {s['feat']}" if s["feat"] else "")
+                      + (f" (written by {s['writers']})" if s["writers"] else "")
+                      for i, s in enumerate(songs))
+    prompt = (
+        "These worship songs are on a church setlist this Sunday. For each, find the "
+        "recording artist the song is best known by: the name a worship leader would "
+        "credit on Instagram (for example \"Elevation Worship & Maverick City Music\"). "
+        "Search the web to confirm; use the songwriters to pick the right song when "
+        "titles are shared. If you cannot confirm one, give an empty string rather "
+        "than a guess.\n\n" + lines + "\n\n"
+        "Finish with only a JSON array, one object per song in order: "
+        "[{\"n\": 1, \"artist\": \"...\"}]")
+    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    messages = [{"role": "user", "content": prompt}]
+    try:
+        for _ in range(4):  # a long search can pause the turn; resume it
+            resp = client.beta.messages.create(
+                model=ARTIST_MODEL, max_tokens=16000,
+                output_config={"effort": "low"},
+                tools=[{"type": "web_search_20260209", "name": "web_search", "max_uses": 8}],
+                betas=["server-side-fallback-2026-07-01"], fallbacks="default",
+                messages=messages)
+            if resp.stop_reason != "pause_turn":
+                break
+            messages = [messages[0], {"role": "assistant", "content": resp.content}]
+        if resp.stop_reason == "refusal":
+            print("  artist lookup declined; crediting songwriters")
+            return
+        text = "".join(b.text for b in resp.content if b.type == "text")
+        found = json.loads(text[text.rindex("["):text.rindex("]") + 1])
+    except Exception as e:  # the setlist still goes out without artists
+        print(f"  artist lookup failed ({e}); crediting songwriters")
+        return
+    for row in found:
+        try:
+            i = int(row.get("n")) - 1
+        except (TypeError, ValueError):
+            continue
+        artist = (row.get("artist") or "").strip()
+        if 0 <= i < len(songs) and artist and len(artist) < 80:
+            songs[i]["artist"] = artist
+    for s in songs:
+        print(f"  {s['title']}: {s['artist'] or '(artist not found, using writers)'}")
+
+
+def set_credits(songs):
+    """The small line under each title: the artist when known, else the writers."""
+    for s in songs:
+        who = s["artist"] or credit_line(s["writers"])
+        feat = s["feat"]
+        if feat and feat.lower() in who.lower():
+            feat = ""
+        s["credit"] = " ".join(x for x in [who, f"feat. {feat}" if feat else ""] if x)
 
 
 # --------------------------------------------------------------------------
@@ -501,13 +577,29 @@ def staff_only(addresses):
     return ok
 
 
-def send_staff_email(to, subject, html, files):
+SEND_HOUR = 7  # the email lands at 7am church time
+
+
+def send_at(now):
+    """7am Central today, as UTC, for Resend's scheduled_at. The job runs in the
+    small hours so the graphics are drawn and the artists found before then;
+    a run that starts after 7 (a late runner, a manual re-run) sends at once."""
+    from zoneinfo import ZoneInfo
+    local = now.astimezone(ZoneInfo("America/Chicago"))
+    target = local.replace(hour=SEND_HOUR, minute=0, second=0, microsecond=0)
+    if local >= target - dt.timedelta(minutes=2):
+        return None
+    return target.astimezone(dt.timezone.utc).isoformat()
+
+
+def send_staff_email(to, subject, html, files, scheduled_at=None):
     to = staff_only(to)
     if not to:
         print("  nobody to send to")
         return False
     if DRY_RUN:
-        print(f"  DRY RUN -> {', '.join(to)}: {subject} ({len(files)} attachments)")
+        print(f"  DRY RUN -> {', '.join(to)}: {subject} ({len(files)} attachments)"
+              + (f", would send at {scheduled_at}" if scheduled_at else ", would send now"))
         (OUT / "email.html").write_text(html, encoding="utf-8")
         return True
     attachments = []
@@ -516,16 +608,28 @@ def send_staff_email(to, subject, html, files):
         if i == 0:
             att["content_id"] = "lead"  # shown inline in the body
         attachments.append(att)
+    payload = {"from": FROM, "to": to, "reply_to": REPLY_TO,
+               "subject": subject, "html": html, "attachments": attachments}
+    if scheduled_at:
+        payload["scheduled_at"] = scheduled_at
     r = requests.post("https://api.resend.com/emails",
                       headers={"Authorization": f"Bearer {RESEND_API_KEY}"},
-                      json={"from": FROM, "to": to, "reply_to": REPLY_TO,
-                            "subject": subject, "html": html, "attachments": attachments},
-                      timeout=60)
+                      json=payload, timeout=60)
     if r.status_code in (200, 201):
-        print(f"  SENT -> {', '.join(to)}: {subject}")
+        when = f"scheduled for {scheduled_at}" if scheduled_at else "sent"
+        print(f"  {when} -> {', '.join(to)}: {subject}")
         return True
     print(f"  FAILED ({r.status_code}): {r.text[:300]}")
     return False
+
+
+def caption_for(plan, songs):
+    day = "Sunday" if plan["when"].weekday() == 6 else plan["when"].strftime("%A")
+    lines = [f"We can't wait to worship with you this {day}! \U0001F64C", ""]
+    for s in songs:
+        lines.append(f"\U0001F3B6 {s['title']}" + (f" | {s['credit']}" if s["credit"] else ""))
+    lines += ["", "#sundaysetlist #godchasers"]
+    return "\n".join(lines)
 
 
 def email_html(sections):
@@ -544,13 +648,11 @@ def email_html(sections):
             f'<li><b>{escape(s["title"])}</b>'
             + (f'<br><span style="color:#777;font-size:13px;">{escape(s["credit"])}</span>' if s["credit"] else "")
             + "</li>" for s in songs)
-        caption = (f"{kicker(plan).title()} setlist \U0001F3B6\n"
-                   + "\n".join(f"{s['title']}" for s in songs)
-                   + "\n\n#sundaysetlist #godchasers")
+        caption = caption_for(plan, songs)
         body.append(
             f'<h2 style="margin:24px 0 4px;font-size:18px;">{head}</h2>'
             f'<ol style="padding-left:20px;line-height:1.5;">{items}</ol>'
-            f'<p style="margin:12px 0 4px;font-size:13px;color:#555;">Caption to copy:</p>'
+            f'<p style="margin:12px 0 4px;"><b>Please share this today</b> with this caption:</p>'
             f'<pre style="background:#f4f4f4;padding:12px;border-radius:6px;white-space:pre-wrap;'
             f'font-family:inherit;">{escape(caption)}</pre>'
             f'<p style="font-size:13px;color:#555;">Attached: {len(files)} graphics, three looks, '
@@ -561,10 +663,11 @@ def email_html(sections):
         lead = ('<p><img src="cid:lead" alt="This week\'s setlist graphic" width="360" '
                 'style="max-width:100%;border-radius:8px;"></p>')
     return ('<div style="font-family:-apple-system,Segoe UI,Arial,sans-serif;max-width:560px;color:#111;">'
-            '<p>This week\'s setlist, ready to post.</p>' + lead + "".join(body) +
+            '<p>Good morning! This week\'s setlist graphic is below. Please post it '
+            'today with the caption under it.</p>' + lead + "".join(body) +
             '<p style="margin-top:28px;font-size:12px;color:#999;">Pulled from Planning Center Services '
-            'every Friday. Song credits are the songwriters PCO has on file; swap in the artist if '
-            'you prefer.</p></div>')
+            'every Friday. Artists were looked up on the web; where one could not be '
+            'confirmed, the songwriters are credited instead.</p></div>')
 
 
 def main():
@@ -578,6 +681,8 @@ def main():
     sections = []
     for plan in plans:
         songs = plan_songs(plan)
+        find_artists(songs)
+        set_credits(songs)
         print(f"- {plan['title'] or 'plan'} {plan['dates']}: {len(songs)} song(s)")
         # Only weekend services get a graphic unless the plan has songs:
         # a midweek prayer meeting with no songs is not news.
@@ -593,7 +698,7 @@ def main():
     has_songs = any(s for _, s, _ in sections)
     subject = (f"Setlist graphic: {first['dates']}" if has_songs
                else f"No setlist yet for {first['dates']}")
-    send_staff_email(STAFF_TO, subject, email_html(sections), files)
+    send_staff_email(STAFF_TO, subject, email_html(sections), files, send_at(now))
 
 
 if __name__ == "__main__":
